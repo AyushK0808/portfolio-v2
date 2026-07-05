@@ -73,28 +73,33 @@ function Atmosphere() {
 export function Scene() {
   const sector = useApp((s) => s.sector);
   const phase = useApp((s) => s.phase);
+  const reducedMotion = useApp((s) => s.reducedMotion);
+  // full-blackout hyperspace: while the tunnel runs, nothing else renders
+  const warping = phase === 'WARP' && !reducedMotion;
 
   return (
     <>
       <PerspectiveCamera makeDefault fov={56} near={0.1} far={2000} position={[0, 1.2, 0]}>
         {/* cockpit + warp tunnel ride with the camera */}
-        <group visible={phase !== 'BOOT'}>
+        <group visible={phase !== 'BOOT' && !warping}>
           <Cockpit />
         </group>
         <WarpTunnel />
       </PerspectiveCamera>
       <CameraDirector />
       <Atmosphere />
-      <Starfield />
-      <Suspense fallback={null}>
-        {sector === 'BRIDGE' && <Bridge />}
-        {sector === 'A' && <SectorA />}
-        {sector === 'B' && <SectorB />}
-        {sector === 'C' && <SectorC />}
-        {sector === 'D' && <SectorD />}
-        {sector === 'E' && <SectorE />}
-        {sector === 'CONTACT' && <SectorContact />}
-      </Suspense>
+      <group visible={!warping}>
+        <Starfield />
+        <Suspense fallback={null}>
+          {sector === 'BRIDGE' && <Bridge />}
+          {sector === 'A' && <SectorA />}
+          {sector === 'B' && <SectorB />}
+          {sector === 'C' && <SectorC />}
+          {sector === 'D' && <SectorD />}
+          {sector === 'E' && <SectorE />}
+          {sector === 'CONTACT' && <SectorContact />}
+        </Suspense>
+      </group>
       <PostFX />
     </>
   );

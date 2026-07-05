@@ -109,7 +109,7 @@ function LinkChip({
     <group position={[x, y, 0.02]}>
       <Interactable id={id} onSelect={() => window.open(href, '_blank', 'noopener')}>
         <mesh>
-          <planeGeometry args={[0.78, 0.16]} />
+          <planeGeometry args={[0.92, 0.19]} />
           <meshBasicMaterial
             color={color}
             transparent
@@ -119,7 +119,7 @@ function LinkChip({
         </mesh>
         <Text
           font={FONT_HUD}
-          fontSize={0.058}
+          fontSize={0.068}
           letterSpacing={0.1}
           color={hovered ? COLORS.textPrimary : color}
           anchorX="center"
@@ -245,26 +245,26 @@ export default function SectorC() {
               {/* project card */}
               <group position={[0, 0.3, 1.9]}>
                 <HoloPanel
-                  width={3.0}
-                  height={1.85}
+                  width={3.6}
+                  height={2.2}
                   color={theme.base}
                   visible={isFocus && isScanned}
                   title={`ARTIFACT ${String(i + 1).padStart(2, '0')} — DECRYPTED`}
                 >
-                  <HoloText x={-1.38} y={0.66} size={0.115} color={COLORS.textPrimary} font={FONT_HUD}>
+                  <HoloText x={-1.68} y={0.8} size={0.15} color={COLORS.textPrimary} font={FONT_HUD}>
                     {proj.title}
                   </HoloText>
-                  <HoloText x={1.38} y={0.66} size={0.046} color={theme.bright} anchorX="right">
+                  <HoloText x={1.68} y={0.82} size={0.055} color={theme.bright} anchorX="right">
                     {proj.tags.join(' · ')}
                   </HoloText>
-                  <HoloText x={-1.38} y={0.44} size={0.056} color={COLORS.textSecondary} maxWidth={2.76} lineHeight={1.45}>
+                  <HoloText x={-1.68} y={0.52} size={0.07} color={COLORS.textSecondary} maxWidth={3.36} lineHeight={1.5}>
                     {proj.oneLiner}
                   </HoloText>
-                  <HoloText x={-1.38} y={-0.42} size={0.048} color={theme.base} maxWidth={2.76}>
+                  <HoloText x={-1.68} y={-0.5} size={0.06} color={theme.base} maxWidth={3.36}>
                     {proj.stack.join(' · ')}
                   </HoloText>
                   {proj.note && (
-                    <HoloText x={-1.38} y={-0.6} size={0.042} color={COLORS.textMuted}>
+                    <HoloText x={-1.68} y={-0.72} size={0.052} color={COLORS.textMuted} maxWidth={3.36}>
                       {proj.note}
                     </HoloText>
                   )}
@@ -273,8 +273,8 @@ export default function SectorC() {
                       id={`link-${proj.id}-repo`}
                       label="OPEN REPO ▸"
                       href={proj.repo}
-                      x={-0.95}
-                      y={-0.78}
+                      x={-1.15}
+                      y={-0.94}
                       color={theme.bright}
                     />
                   )}
@@ -283,8 +283,8 @@ export default function SectorC() {
                       id={`link-${proj.id}-live`}
                       label="LIVE LINK ▸"
                       href={proj.live}
-                      x={-0.05}
-                      y={-0.78}
+                      x={-0.1}
+                      y={-0.94}
                       color={COLORS.success}
                     />
                   )}

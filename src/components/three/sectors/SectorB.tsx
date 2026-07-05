@@ -128,25 +128,25 @@ export default function SectorB() {
               {/* dock panel */}
               <group position={[0, 0.4, 2.2]}>
                 <HoloPanel
-                  width={3.3}
-                  height={2.1}
+                  width={3.9}
+                  height={2.5}
                   color={theme.base}
                   visible={isFocus}
                   title={`LOG ${String(i + 1).padStart(2, '0')}/${EXPERIENCE.length} — ${KIND_TAG[exp.kind]}`}
                 >
-                  <HoloText x={-1.52} y={0.78} size={0.125} color={COLORS.textPrimary} font={FONT_HUD}>
+                  <HoloText x={-1.82} y={0.92} size={0.16} color={COLORS.textPrimary} font={FONT_HUD}>
                     {exp.org}
                   </HoloText>
-                  <HoloText x={-1.52} y={0.58} size={0.055} color={theme.bright}>
+                  <HoloText x={-1.82} y={0.67} size={0.072} color={theme.bright}>
                     {exp.role}
                   </HoloText>
-                  <HoloText x={-1.52} y={0.46} size={0.048} color={COLORS.textMuted}>
+                  <HoloText x={-1.82} y={0.53} size={0.058} color={COLORS.textMuted}>
                     {`${exp.dates} · ${exp.location}`}
                   </HoloText>
-                  <HoloText x={-1.52} y={0.30} size={0.054} color={COLORS.textSecondary} maxWidth={3.04} lineHeight={1.45}>
+                  <HoloText x={-1.82} y={0.35} size={0.066} color={COLORS.textSecondary} maxWidth={3.64} lineHeight={1.5}>
                     {exp.bullets.map((b) => `▸ ${b}`).join('\n')}
                   </HoloText>
-                  <HoloText x={-1.52} y={-0.86} size={0.048} color={theme.base}>
+                  <HoloText x={-1.82} y={-1.04} size={0.058} color={theme.base} maxWidth={3.64}>
                     {exp.tech.join(' · ')}
                   </HoloText>
                 </HoloPanel>

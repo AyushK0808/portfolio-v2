@@ -17,8 +17,8 @@ import { EDUCATION } from '@/content/education';
 import { PROJECTS } from '@/content/projects';
 import { SKILL_GROUPS, TECH } from './techMap';
 
-// WebGL aurora background for the hero (ReactBits) — client-only
-const Aurora = dynamic(() => import('./Aurora'), { ssr: false });
+// WebGL line-waves background for the hero (ReactBits) — client-only
+const LineWaves = dynamic(() => import('./LineWaves'), { ssr: false });
 
 /* ─────────────────────────── helpers ─────────────────────────── */
 
@@ -261,7 +261,7 @@ function Hero() {
   const tagline = useDecode(SITE.tagline.toUpperCase(), 28);
   return (
     <section id="home" className="relative flex min-h-[92vh] w-full flex-col justify-center overflow-hidden">
-      {/* ReactBits aurora, tinted to the deck palette, faded out at the bottom */}
+      {/* ReactBits line waves, tinted to the deck palette, faded out at the bottom */}
       <div
         aria-hidden
         className="pointer-events-none absolute inset-0"
@@ -272,7 +272,14 @@ function Hero() {
           maskImage: 'linear-gradient(to bottom, black 55%, transparent 100%)',
         }}
       >
-        <Aurora colorStops={['#00D9F5', '#B266FF', '#2FE0C8']} amplitude={1.1} blend={0.55} speed={0.6} />
+        <LineWaves
+          color1="#00D9F5"
+          color2="#B266FF"
+          color3="#2FE0C8"
+          speed={0.25}
+          brightness={0.3}
+          warpIntensity={0.9}
+        />
       </div>
       {/* readability veil so the dossier text stays crisp over the light */}
       <div

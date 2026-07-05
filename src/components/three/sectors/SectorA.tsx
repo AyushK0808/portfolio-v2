@@ -5,7 +5,7 @@ import * as THREE from 'three';
 import { useFrame } from '@react-three/fiber';
 import { useApp } from '@/state/store';
 import { COLORS, SECTORS } from '@/lib/theme';
-import { DOSSIER_POS, STATION_POS, SUBSYS_POS, FLIGHT } from '@/systems/flightplan';
+import { DOSSIER_POS, STATION_POS, SUBSYS_NODES, FLIGHT } from '@/systems/flightplan';
 import { DOSSIER } from '@/content/bio';
 import { SUBSYSTEMS } from '@/content/skills';
 import { HoloPanel, HoloText, HoloBar } from '../HoloPanel';
@@ -88,7 +88,6 @@ export default function SectorA() {
   const focus = useApp((s) => s.focus);
 
   const dossierPark = FLIGHT.A.pois.dossier.pos;
-  const subsysPark = FLIGHT.A.pois.subsystems.pos;
 
   return (
     <group>
@@ -129,65 +128,50 @@ export default function SectorA() {
         </HoloPanel>
       </group>
 
-      {/* ── Ship Subsystems (skills) ── */}
-      <group position={SUBSYS_POS} rotation={faceYaw(SUBSYS_POS, subsysPark)}>
-        {focus !== 'subsystems' && (
-          <Interactable id="subsystems">
-            <HoloMarker color={theme.base} label="Ship Subsystems" active />
-          </Interactable>
-        )}
-        <group visible>
-          <HoloPanel
-            width={4.6}
-            height={0.42}
-            color={theme.base}
-            visible={focus === 'subsystems'}
-            position={[0, 1.62, 0]}
-            title="SHIP SUBSYSTEMS — SKILL READOUT"
-            float={false}
-          >
-            <HoloText x={2.2} y={0.12} size={0.045} color={COLORS.success} anchorX="right">
-              ALL SYSTEMS NOMINAL
-            </HoloText>
-          </HoloPanel>
-          {SUBSYSTEMS.map((sub, i) => {
-            const col = i % 4;
-            const row = Math.floor(i / 4);
-            const x = -1.8 + col * 1.2;
-            const y = 0.78 - row * 1.35;
-            // slight curve: outer tiles angled inward
-            const curve = (col - 1.5) * -0.12;
-            return (
-              <group key={sub.id} position={[x, y, Math.abs(col - 1.5) * -0.1]} rotation={[0, curve, 0]}>
-                <HoloPanel
-                  width={1.1}
-                  height={1.2}
-                  color={theme.base}
-                  visible={focus === 'subsystems'}
-                  float={false}
-                >
-                  <HoloText x={-0.5} y={0.52} size={0.06} color={theme.bright} font={FONT_HUD}>
-                    {sub.system}
-                  </HoloText>
-                  <HoloText x={-0.5} y={0.4} size={0.042} color={COLORS.textSecondary}>
-                    {sub.domain}
-                  </HoloText>
-                  <HoloBar x={-0.5} y={0.27} width={1.0} level={sub.level} color={theme.base} />
-                  <HoloText x={0.5} y={0.33} size={0.042} color={theme.bright} anchorX="right">
-                    {`${sub.level}%`}
-                  </HoloText>
-                  <HoloText x={-0.5} y={0.16} size={0.042} color={COLORS.textPrimary} maxWidth={1.0} lineHeight={1.4}>
-                    {sub.items.join(' · ')}
-                  </HoloText>
-                  <HoloText x={-0.5} y={-0.22} size={0.038} color={COLORS.textMuted} maxWidth={1.0} lineHeight={1.35}>
-                    {sub.detail}
-                  </HoloText>
-                </HoloPanel>
+      {/* ── Ship Subsystems (skills) — one checkpoint per subsystem ── */}
+      {SUBSYSTEMS.map((sub, i) => {
+        const node = SUBSYS_NODES[i];
+        const park = FLIGHT.A.pois[node.id].pos;
+        const isFocus = focus === node.id;
+        return (
+          <group key={sub.id} position={node.pos} rotation={faceYaw(node.pos, park)}>
+            {!isFocus && (
+              <group position={[0, 0.55, 0]}>
+                <Interactable id={node.id}>
+                  <HoloMarker color={theme.base} label={sub.system} active />
+                </Interactable>
               </group>
-            );
-          })}
-        </group>
-      </group>
+            )}
+            <HoloPanel
+              width={2.7}
+              height={1.75}
+              color={theme.base}
+              visible={isFocus}
+              title={`SUBSYSTEM ${String(i + 1).padStart(2, '0')}/${SUBSYSTEMS.length} — SKILL READOUT`}
+            >
+              <HoloText x={-1.25} y={0.6} size={0.15} color={theme.bright} font={FONT_HUD}>
+                {sub.system}
+              </HoloText>
+              <HoloText x={-1.25} y={0.37} size={0.07} color={COLORS.textSecondary}>
+                {sub.domain}
+              </HoloText>
+              <HoloBar x={-1.25} y={0.19} width={2.0} level={sub.level} color={theme.base} />
+              <HoloText x={1.25} y={0.26} size={0.062} color={theme.bright} anchorX="right">
+                {`${sub.level}%`}
+              </HoloText>
+              <HoloText x={-1.25} y={0.05} size={0.068} color={COLORS.textPrimary} maxWidth={2.5} lineHeight={1.4}>
+                {sub.items.join(' · ')}
+              </HoloText>
+              <HoloText x={-1.25} y={-0.36} size={0.058} color={COLORS.textSecondary} maxWidth={2.5} lineHeight={1.4}>
+                {sub.detail}
+              </HoloText>
+              <HoloText x={1.25} y={0.6} size={0.05} color={COLORS.success} anchorX="right">
+                NOMINAL
+              </HoloText>
+            </HoloPanel>
+          </group>
+        );
+      })}
     </group>
   );
 }

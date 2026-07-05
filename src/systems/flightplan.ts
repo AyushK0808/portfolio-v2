@@ -2,6 +2,7 @@ import { SectorId } from '@/lib/theme';
 import { EXPERIENCE } from '@/content/experience';
 import { PROJECTS } from '@/content/projects';
 import { GALLERY } from '@/content/gallery';
+import { SUBSYSTEMS } from '@/content/skills';
 import { MISSION_ORDER } from '@/lib/theme';
 
 /**
@@ -29,10 +30,25 @@ export const DIAL_NODES = MISSION_ORDER.map((id, i) => {
   };
 });
 
-// ── Mission A: home station + two content POIs ──
+// ── Mission A: home station + dossier + one checkpoint per subsystem ──
 export const STATION_POS: V3 = [0, -1, -30];
 export const DOSSIER_POS: V3 = [-4.6, 1.9, -14];
-export const SUBSYS_POS: V3 = [5.4, 1.6, -15];
+
+// the 8 skill tiles orbit the station — the scroll-autopilot tours them
+// left → right around the near hemisphere, one checkpoint each
+export const SUBSYS_NODES = SUBSYSTEMS.map((s, i) => {
+  const n = SUBSYSTEMS.length;
+  const a = (-0.56 + (1.12 * i) / (n - 1)) * Math.PI; // -100° → +100°
+  const r = 11;
+  return {
+    id: `sub-${s.id}`,
+    pos: [
+      STATION_POS[0] + Math.sin(a) * r,
+      1.4 + Math.sin(i * 1.7) * 0.9,
+      STATION_POS[2] + Math.cos(a) * r,
+    ] as V3,
+  };
+});
 
 // ── Mission B: corridor outposts strung down -Z ──
 export const CORRIDOR_NODES = EXPERIENCE.map((e, i) => ({
@@ -98,7 +114,21 @@ function buildFlight(): Record<SectorId, { entry: Pose; pois: Record<string, Pos
       entry: { pos: [0, 1.4, 3], look: STATION_POS },
       pois: {
         dossier: { pos: lift(DOSSIER_POS, 0, 4.4), look: DOSSIER_POS },
-        subsystems: { pos: lift(SUBSYS_POS, 0.1, 5.2), look: SUBSYS_POS },
+        // park radially outward from the station so each tile faces the camera
+        ...Object.fromEntries(
+          SUBSYS_NODES.map((n) => {
+            const dx = n.pos[0] - STATION_POS[0];
+            const dz = n.pos[2] - STATION_POS[2];
+            const k = 3.6 / Math.hypot(dx, dz);
+            return [
+              n.id,
+              {
+                pos: [n.pos[0] + dx * k, n.pos[1] + 0.15, n.pos[2] + dz * k] as V3,
+                look: n.pos,
+              },
+            ];
+          }),
+        ),
         station: { pos: [0, 2.5, -12], look: STATION_POS },
       },
     },
@@ -149,7 +179,7 @@ export const FLIGHT = buildFlight();
 /** POI visit order per sector — drives the HUD PREV/NEXT autopilot controls */
 export const POI_ORDER: Record<SectorId, string[]> = {
   BRIDGE: [],
-  A: ['dossier', 'subsystems', 'station'],
+  A: ['dossier', ...SUBSYS_NODES.map((n) => n.id), 'station'],
   B: EXPERIENCE.map((e) => e.id),
   C: PROJECTS.map((p) => p.id),
   D: GALLERY.map((g) => g.id),

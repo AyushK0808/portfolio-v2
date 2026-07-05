@@ -636,7 +636,8 @@ function CoordsTicker() {
 export function Hud() {
   const phase = useApp((s) => s.phase);
   const reducedMotion = useApp((s) => s.reducedMotion);
-  const inFlight = phase === 'BRIDGE' || phase === 'MISSION' || phase === 'WARP';
+  // during WARP the hyperspace tunnel owns the whole frame — no HUD chrome
+  const inFlight = phase === 'BRIDGE' || phase === 'MISSION';
 
   return (
     <div className="absolute inset-0 overflow-hidden pointer-events-none select-none">
@@ -668,8 +669,8 @@ export function Hud() {
         </>
       )}
 
-      {/* the always-available escape hatch (plan §12) */}
-      {phase !== 'BOOT' && (
+      {/* the always-available escape hatch (plan §12) — hidden mid-warp */}
+      {phase !== 'BOOT' && phase !== 'WARP' && (
         <div className="absolute bottom-2 left-1/2 -translate-x-1/2">
           <Link
             href="/resume"

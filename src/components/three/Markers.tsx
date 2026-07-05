@@ -49,13 +49,15 @@ export function HoloMarker({
       </mesh>
       <Text
         font={FONT_HUD}
-        fontSize={0.14}
+        fontSize={0.17}
         letterSpacing={0.14}
         color={color}
         anchorX="center"
         anchorY="bottom"
         position={[0, 0.3, 0]}
         fillOpacity={scanned ? 0.5 : 0.95}
+        // front side only — otherwise far-side markers read as mirrored text
+        material-side={THREE.FrontSide}
       >
         {label.toUpperCase()}
       </Text>

@@ -62,7 +62,19 @@ export function HoloPanel({
   return (
     <group position={position} rotation={rotation}>
       <group ref={group} scale={[1, 0.001, 1]}>
-        <mesh>
+        {/* dark backing so bright world objects don't bleed through the text —
+            renderOrder keeps it under the text/scanlines in the transparent pass */}
+        <mesh position={[0, 0, -0.005]} renderOrder={-2}>
+          <planeGeometry args={[width, height]} />
+          <meshBasicMaterial
+            color="#05060A"
+            transparent
+            opacity={0.72}
+            side={THREE.DoubleSide}
+            depthWrite={false}
+          />
+        </mesh>
+        <mesh renderOrder={-1}>
           <planeGeometry args={[width, height]} />
           <holoMaterial
             ref={mat}
@@ -76,7 +88,7 @@ export function HoloPanel({
           {title && (
             <Text
               font={FONT_HUD}
-              fontSize={0.09}
+              fontSize={0.1}
               letterSpacing={0.14}
               color={color}
               anchorX="left"
