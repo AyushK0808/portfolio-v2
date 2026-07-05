@@ -14,9 +14,17 @@
   },
   "dependencies": {
     "@opennextjs/cloudflare": "^1.19.9",
+    "@react-three/drei": "^10.7.7",
+    "@react-three/fiber": "^9.6.1",
+    "@react-three/postprocessing": "^3.0.4",
+    "maath": "^0.10.8",
     "next": "16.2.6",
+    "ogl": "^1.0.11",
     "react": "^19.1.7",
-    "react-dom": "^19.1.7"
+    "react-dom": "^19.1.7",
+    "react-icons": "^5.7.0",
+    "three": "^0.185.1",
+    "zustand": "^5.0.14"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3",
@@ -24,8 +32,10 @@
     "@types/node": "^20.19.43",
     "@types/react": "^19.1.7",
     "@types/react-dom": "^19.1.7",
+    "@types/three": "^0.185.0",
     "eslint": "^9",
     "eslint-config-next": "16.2.6",
+    "puppeteer-core": "^25.3.0",
     "tailwindcss": "^4",
     "typescript": "^5.7.4",
     "wrangler": "^4.107.0"
