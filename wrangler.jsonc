@@ -55,7 +55,8 @@
 	"kv_namespaces": [
 		{
 			"binding": "SCORES",
-			"id": "REPLACE_WITH_KV_NAMESPACE_ID"
+			"id": "58ad6787f24843c6af3022463f1a8075",
+			"remote": true
 		}
 	]
 	/**
