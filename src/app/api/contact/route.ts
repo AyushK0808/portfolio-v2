@@ -4,10 +4,11 @@ import { SITE } from '@/content/site';
 
 /**
  * Comms terminal transmit endpoint. Every submission is BOTH emailed to the
- * pilot (Gmail SMTP, authenticated with a Google App Password via worker-mailer
- * — nodemailer can't run on Workers) AND persisted to MongoDB. Per the chosen
- * policy both must succeed; if either the mail or the DB write fails the caller
- * gets an error and the terminal shows the failure so nothing is silently lost.
+ * pilot (Gmail SMTP, authenticated with a Google App Password via nodemailer,
+ * which runs on Workers under nodejs_compat) AND persisted to MongoDB. Per the
+ * chosen policy both must succeed; if either the mail or the DB write fails
+ * the caller gets an error and the terminal shows the failure so nothing is
+ * silently lost.
  *
  * Required env (see ENV.md): GMAIL_USER, GMAIL_APP_PASSWORD, CONTACT_TO
  * (optional), MONGODB_URI, MONGODB_DB (optional), MONGODB_COLLECTION (optional).
@@ -36,27 +37,23 @@ async function sendMail(env: ContactEnv, sub: { name: string; email: string; mes
   const pass = env.GMAIL_APP_PASSWORD;
   if (!user || !pass) throw new Error('email not configured (GMAIL_USER / GMAIL_APP_PASSWORD)');
 
-  const { WorkerMailer } = await import('worker-mailer');
-  await WorkerMailer.send(
-    {
-      host: 'smtp.gmail.com',
-      port: 587,
-      secure: false, // upgrade to TLS via STARTTLS
-      startTls: true,
-      authType: 'login',
-      credentials: { username: user, password: pass },
-    },
-    {
-      from: { name: 'Comms Terminal', email: user },
-      to: { email: env.CONTACT_TO || SITE.email },
-      reply: { name: sub.name, email: sub.email },
-      subject: `[ayushk08.com] transmission from ${sub.name}`,
-      text: `From: ${sub.name} <${sub.email}>\n\n${sub.message}`,
-      html:
-        `<p><strong>From:</strong> ${escapeHtml(sub.name)} &lt;${escapeHtml(sub.email)}&gt;</p>` +
-        `<p style="white-space:pre-wrap">${escapeHtml(sub.message)}</p>`,
-    },
-  );
+  const { createTransport } = await import('nodemailer');
+  const transporter = createTransport({
+    host: 'smtp.gmail.com',
+    port: 587,
+    secure: false, // upgrade to TLS via STARTTLS
+    auth: { user, pass },
+  });
+  await transporter.sendMail({
+    from: `"Comms Terminal" <${user}>`,
+    to: env.CONTACT_TO || SITE.email,
+    replyTo: `"${sub.name}" <${sub.email}>`,
+    subject: `[ayushk08.com] transmission from ${sub.name}`,
+    text: `From: ${sub.name} <${sub.email}>\n\n${sub.message}`,
+    html:
+      `<p><strong>From:</strong> ${escapeHtml(sub.name)} &lt;${escapeHtml(sub.email)}&gt;</p>` +
+      `<p style="white-space:pre-wrap">${escapeHtml(sub.message)}</p>`,
+  });
 }
 
 async function storeSubmission(

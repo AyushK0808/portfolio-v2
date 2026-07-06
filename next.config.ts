@@ -1,10 +1,9 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-	// keep these out of the Next server bundle — mongodb pulls optional native
-	// deps and worker-mailer imports `cloudflare:sockets`; both are resolved at
-	// runtime (the OpenNext worker build handles the cloudflare: externals).
-	serverExternalPackages: ["mongodb", "worker-mailer"],
+	// keep mongodb out of the Next server bundle — it pulls optional native
+	// deps that are resolved at runtime.
+	serverExternalPackages: ["mongodb"],
 };
 
 export default nextConfig;
