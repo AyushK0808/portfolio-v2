@@ -15,6 +15,7 @@ import { HeroShip } from './HeroShip';
 import { WarpTunnel } from './WarpTunnel';
 import { CameraDirector } from './CameraDirector';
 import { PostFX } from './PostFX';
+import { SectorPlaceholder, SectorReadyBeacon } from './SectorPlaceholder';
 
 const Bridge = lazy(() => import('./sectors/Bridge'));
 const SectorA = lazy(() => import('./sectors/SectorA'));
@@ -71,6 +72,28 @@ function Atmosphere() {
   );
 }
 
+/**
+ * Ends a warp only once the destination sector has actually loaded. The tunnel
+ * therefore doubles as the loading screen for every jump: it keeps streaking
+ * past the minimum clip length until <SectorReadyBeacon> reports the incoming
+ * sector's component + assets are in, with a hard safety cap so a stalled or
+ * failed asset can never trap the pilot in hyperspace (we drop out and the
+ * SectorPlaceholder covers the remainder).
+ */
+const WARP_MAX_HOLD = 6000;
+
+function WarpController() {
+  useFrame(() => {
+    const s = useApp.getState();
+    if (s.phase !== 'WARP' || !s.warpTarget) return;
+    const elapsed = performance.now() - s.warpStartedAt;
+    const minDone = elapsed >= s.warpDuration;
+    const capped = elapsed >= s.warpDuration + WARP_MAX_HOLD;
+    if (capped || (minDone && s.sectorReady)) s.arriveSector();
+  });
+  return null;
+}
+
 export function Scene() {
   const sector = useApp((s) => s.sector);
   const phase = useApp((s) => s.phase);
@@ -99,16 +122,24 @@ export function Scene() {
             <HeroShip />
           </Suspense>
         )}
-        <Suspense fallback={null}>
-          {sector === 'BRIDGE' && <Bridge />}
-          {sector === 'A' && <SectorA />}
-          {sector === 'B' && <SectorB />}
-          {sector === 'C' && <SectorC />}
-          {sector === 'D' && <SectorD />}
-          {sector === 'E' && <SectorE />}
-          {sector === 'CONTACT' && <SectorContact />}
+        {/* Incoming sector streams in behind a holographic placeholder; keyed by
+            sector so switching fully remounts and the readiness beacon re-arms.
+            The beacon only commits once this boundary resolves — WarpController
+            waits on it so lightspeed holds until the sector is actually loaded. */}
+        <Suspense fallback={<SectorPlaceholder />}>
+          <group key={sector}>
+            {sector === 'BRIDGE' && <Bridge />}
+            {sector === 'A' && <SectorA />}
+            {sector === 'B' && <SectorB />}
+            {sector === 'C' && <SectorC />}
+            {sector === 'D' && <SectorD />}
+            {sector === 'E' && <SectorE />}
+            {sector === 'CONTACT' && <SectorContact />}
+            <SectorReadyBeacon />
+          </group>
         </Suspense>
       </group>
+      <WarpController />
       <PostFX />
     </>
   );

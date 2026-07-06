@@ -9,6 +9,7 @@ import { COLORS } from '@/lib/theme';
 import { Scene } from './three/Scene';
 import { Hud } from './hud/Hud';
 import { ShipViewer } from './ShipViewer';
+import { LoadingScreen } from './LoadingScreen';
 
 function MobileGate() {
   return (
@@ -175,6 +176,8 @@ function Deck() {
       </CanvasErrorBoundary>
       <Hud />
       {recovering && <RebootNotice />}
+      {/* first-paint boot loader — holds until the hero ship is on screen */}
+      <LoadingScreen />
     </div>
   );
 }

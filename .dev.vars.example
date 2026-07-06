@@ -1,0 +1,13 @@
+# Copy to .dev.vars and fill in. Used by `wrangler dev` / opennext preview.
+NEXTJS_ENV=development
+
+# ── Comms form (Gmail SMTP via worker-mailer) ──
+GMAIL_USER=you@gmail.com
+# 16-char Google App Password (Google Account → Security → App passwords)
+GMAIL_APP_PASSWORD=xxxxxxxxxxxxxxxx
+CONTACT_TO=you@gmail.com
+
+# ── MongoDB (contact submissions) ──
+MONGODB_URI=mongodb+srv://user:pass@cluster.xxxxx.mongodb.net/?retryWrites=true&w=majority
+MONGODB_DB=portfolio
+MONGODB_COLLECTION=contact_submissions

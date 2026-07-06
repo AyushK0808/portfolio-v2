@@ -1,21 +1,19 @@
 'use client';
 
-import { Suspense, useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { useFrame, useThree } from '@react-three/fiber';
 import { Billboard, Line, Text, useGLTF } from '@react-three/drei';
 import { useApp } from '@/state/store';
 import { audio } from '@/systems/audio';
 import { COLORS, SECTORS } from '@/lib/theme';
-import { Model } from '../Model';
+import { MustafarPlanet } from '../Planets';
 import { HoloPanel, HoloText } from '../HoloPanel';
 import { FONT_HUD } from '../materials';
 
 const theme = SECTORS.E;
 
-const MUSTAFAR_URL = '/3d/mustafar.glb';
 const ASTEROID_URL = '/3d/asteroid.glb';
-useGLTF.preload(MUSTAFAR_URL);
 useGLTF.preload(ASTEROID_URL);
 
 /** the lava world Mustafar filling the horizon behind the combat range —
@@ -28,10 +26,8 @@ function Mustafar() {
   return (
     <group position={[8, -30, -165]}>
       <group ref={group}>
-        <Suspense fallback={null}>
-          {/* lava fields carry themselves on the authored emissive map */}
-          <Model url={MUSTAFAR_URL} fit={150} emissiveBoost={8} noFog />
-        </Suspense>
+        {/* procedural lava world — the shader's molten fields light themselves */}
+        <MustafarPlanet radius={75} sunDirection={[0.35, 0.6, 0.55]} />
       </group>
       {/* molten glow bleeding up into the arena */}
       <pointLight position={[-6, 60, 70]} color="#FF6A2E" intensity={14} distance={240} decay={1.3} />
@@ -139,7 +135,9 @@ export default function SectorE() {
   const rock = useAsteroidRock();
   const addScore = useApp((s) => s.addScore);
   const setPilotsOnline = useApp((s) => s.setPilotsOnline);
+  const setArenaGlobalBest = useApp((s) => s.setArenaGlobalBest);
   const arenaScore = useApp((s) => s.arenaScore);
+  const arenaGlobalBest = useApp((s) => s.arenaGlobalBest);
 
   const asteroids = useRef<Asteroid[]>([]);
   if (asteroids.current.length === 0) {
@@ -172,6 +170,35 @@ export default function SectorE() {
     setPilotsOnline(1 + BOTS.length);
     return () => setPilotsOnline(1);
   }, [setPilotsOnline]);
+
+  // pull the all-time galaxy best from the KV cache on entry, and persist this
+  // session's best on the way out (keepalive so it survives the unmount)
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/api/score')
+      .then((r) => r.json() as Promise<{ best?: number }>)
+      .then((d) => {
+        if (!cancelled && typeof d?.best === 'number') setArenaGlobalBest(d.best);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+      const best = useApp.getState().arenaBest;
+      if (best > 0) {
+        fetch('/api/score', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ score: best, name: 'GUEST PILOT' }),
+          keepalive: true,
+        }).catch(() => {});
+      }
+    };
+  }, [setArenaGlobalBest]);
+
+  // keep the on-screen galaxy best in step as the pilot overtakes it live
+  useEffect(() => {
+    if (arenaScore > arenaGlobalBest) setArenaGlobalBest(arenaScore);
+  }, [arenaScore, arenaGlobalBest, setArenaGlobalBest]);
 
   const pushShot = (shot: Shot) => {
     setShots((prev) => [...prev.slice(-6), shot]);
@@ -358,7 +385,10 @@ export default function SectorE() {
               {`${i + 1}. ${row.name.padEnd(20, ' ')} ${String(row.score).padStart(4, ' ')}`}
             </HoloText>
           ))}
-          <HoloText x={-1.12} y={-0.55} size={0.055} color={COLORS.textMuted}>
+          <HoloText x={-1.12} y={-0.44} size={0.06} color={theme.bright}>
+            {`★ GALAXY BEST: ${String(Math.max(arenaGlobalBest, arenaScore)).padStart(4, ' ')}`}
+          </HoloText>
+          <HoloText x={-1.12} y={-0.58} size={0.055} color={COLORS.textMuted}>
             {`PILOTS ONLINE: ${1 + BOTS.length} (${BOTS.length} AI WINGMATES)`}
           </HoloText>
         </HoloPanel>

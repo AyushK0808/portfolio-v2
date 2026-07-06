@@ -37,7 +37,17 @@ interface AppState {
   scanned: string[]; // scanned project ids (Mission C)
   arenaScore: number;
   arenaBest: number;
+  /** all-time global best pulled from / pushed to the KV-backed leaderboard */
+  arenaGlobalBest: number;
   pilotsOnline: number; // 1 (you) + bots
+
+  /** true once the hero ship GLB has loaded and is on screen (gates the
+   *  initial loading screen — we hold it until the ship is actually in view) */
+  shipLoaded: boolean;
+  /** true once the currently-mounted sector's component + assets have loaded.
+   *  Reset to false at the start of every warp so the lightspeed tunnel keeps
+   *  running as a loader until the incoming sector is ready. */
+  sectorReady: boolean;
 
   /** missions the pilot has cleared this session (gamification) */
   completedMissions: MissionId[];
@@ -62,7 +72,10 @@ interface AppState {
   markScanned: (id: string) => void;
   addScore: (n: number) => void;
   resetScore: () => void;
+  setArenaGlobalBest: (n: number) => void;
   setPilotsOnline: (n: number) => void;
+  setShipLoaded: (v: boolean) => void;
+  setSectorReady: (v: boolean) => void;
   /** leave the arena — marks E cleared and raises the completion overlay */
   exitArena: () => void;
   /** mark a mission cleared and (optionally) raise the completion overlay */
@@ -91,7 +104,11 @@ export const useApp = create<AppState>()(
     scanned: [],
     arenaScore: 0,
     arenaBest: 0,
+    arenaGlobalBest: 0,
     pilotsOnline: 1,
+
+    shipLoaded: false,
+    sectorReady: false,
 
     completedMissions: [],
     missionCompleteShown: false,
@@ -132,10 +149,12 @@ export const useApp = create<AppState>()(
         focus: null,
         hovered: null,
         missionCompleteShown: false,
+        sectorReady: false,
       });
-      // swap the mounted sector mid-warp, under cover of the tunnel
-      window.setTimeout(() => set({ sector: m }), dur * 0.5);
-      window.setTimeout(() => get().arriveSector(), dur);
+      // swap the mounted sector mid-warp, under cover of the tunnel; mark the
+      // new sector unloaded so the tunnel holds until it reports ready. Arrival
+      // itself is driven by <WarpController> once (min duration && sectorReady).
+      window.setTimeout(() => set({ sector: m, sectorReady: false }), dur * 0.5);
     },
 
     returnToBridge: () => {
@@ -151,9 +170,9 @@ export const useApp = create<AppState>()(
         focus: null,
         hovered: null,
         missionCompleteShown: false,
+        sectorReady: false,
       });
-      window.setTimeout(() => set({ sector: 'BRIDGE' }), dur * 0.5);
-      window.setTimeout(() => get().arriveSector(), dur);
+      window.setTimeout(() => set({ sector: 'BRIDGE', sectorReady: false }), dur * 0.5);
     },
 
     arriveSector: () => {
@@ -192,7 +211,10 @@ export const useApp = create<AppState>()(
       }));
     },
     resetScore: () => set({ arenaScore: 0 }),
+    setArenaGlobalBest: (n) => set((s) => ({ arenaGlobalBest: Math.max(s.arenaGlobalBest, n) })),
     setPilotsOnline: (n) => set({ pilotsOnline: n }),
+    setShipLoaded: (v) => set({ shipLoaded: v }),
+    setSectorReady: (v) => set({ sectorReady: v }),
 
     exitArena: () => {
       const { phase, sector } = get();

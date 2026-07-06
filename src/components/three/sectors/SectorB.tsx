@@ -1,23 +1,19 @@
 'use client';
 
-import { Suspense, useMemo, useRef } from 'react';
+import { useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import { useFrame } from '@react-three/fiber';
-import { useGLTF } from '@react-three/drei';
 import { useApp } from '@/state/store';
 import { COLORS, SECTORS } from '@/lib/theme';
 import { CORRIDOR_NODES, FLIGHT } from '@/systems/flightplan';
 import { EXPERIENCE, ExperienceNode } from '@/content/experience';
-import { Model } from '../Model';
+import { CoruscantPlanet } from '../Planets';
 import { HoloPanel, HoloText } from '../HoloPanel';
 import { Interactable } from '../Interactable';
 import { HoloMarker, faceYaw } from '../Markers';
 import { FONT_HUD } from '../materials';
 
 const theme = SECTORS.B;
-
-const CORUSCANT_URL = '/3d/coruscant.glb';
-useGLTF.preload(CORUSCANT_URL);
 
 // approach path off the port bow: a distant speck at the corridor entry that
 // swells to fill the left of the frame by the final flight log
@@ -49,17 +45,11 @@ function Coruscant() {
   return (
     <group ref={group} position={CORUSCANT_FAR}>
       <group ref={spin}>
-        <Suspense fallback={null}>
-          {/* night-side city: the authored emissive light-grid reads the surface
-              detail, but on its own the dark grey hull vanishes against the void.
-              A short-range key light (below) grazes the near hemisphere so the
-              planet reads as a lit body without reaching the cockpit at origin. */}
-          <Model url={CORUSCANT_URL} fit={96} emissiveBoost={10} noFog />
-        </Suspense>
+        {/* procedural ecumenopolis: night-side circuit-grid faces the corridor,
+            sun off the port bow lights the far crescent. The shader is fully
+            self-lit — no key light needed, nothing reaches the cockpit. */}
+        <CoruscantPlanet radius={48} sunDirection={[-0.7, 0.22, -0.5]} />
       </group>
-      {/* planet-local key light: rides with Coruscant, distance-capped well
-          short of the ~150-unit gap to the cockpit so struts stay unlit */}
-      <pointLight position={[38, 16, 42]} color="#cfe0ff" intensity={120} distance={120} decay={0.9} />
     </group>
   );
 }

@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import { useFrame } from '@react-three/fiber';
 import { useGLTF } from '@react-three/drei';
@@ -87,6 +87,14 @@ export function HeroShip() {
   const sway = useRef<THREE.Group>(null);
   const amp = useRef(0);
   const reducedMotion = useApp((s) => s.reducedMotion);
+  const setShipLoaded = useApp((s) => s.setShipLoaded);
+
+  // HeroShip sits inside a <Suspense>, so this effect only commits once the
+  // ship GLB has resolved and the hull is actually on screen — that's the
+  // signal the initial loading screen waits for before lifting.
+  useEffect(() => {
+    setShipLoaded(true);
+  }, [setShipLoaded]);
 
   useFrame((state, dt) => {
     const s = useApp.getState();

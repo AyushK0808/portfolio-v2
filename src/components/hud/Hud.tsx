@@ -147,6 +147,7 @@ function MissionExtras() {
   const scanned = useApp((s) => s.scanned);
   const arenaScore = useApp((s) => s.arenaScore);
   const arenaBest = useApp((s) => s.arenaBest);
+  const arenaGlobalBest = useApp((s) => s.arenaGlobalBest);
   const navMode = useApp((s) => s.navMode);
   const focus = useApp((s) => s.focus);
 
@@ -160,7 +161,7 @@ function MissionExtras() {
       )}
       {sector === 'E' && (
         <div style={{ color: SECTORS.E.bright }}>
-          SCORE {arenaScore} · BEST {arenaBest}
+          SCORE {arenaScore} · BEST {arenaBest} · ★ GALAXY {Math.max(arenaGlobalBest, arenaScore)}
           <div style={{ color: COLORS.textMuted }}>DRAG TO AIM · CLICK / SPACE TO FIRE</div>
           <div style={{ color: COLORS.textMuted }}>EXIT GAME TO END MISSION</div>
         </div>

@@ -1,6 +1,6 @@
 'use client';
 
-import { Suspense, useRef } from 'react';
+import { useRef } from 'react';
 import * as THREE from 'three';
 import { useFrame } from '@react-three/fiber';
 import { useGLTF } from '@react-three/drei';
@@ -32,9 +32,9 @@ function HomeStation() {
   return (
     <group position={STATION_POS}>
       <group ref={group}>
-        <Suspense fallback={null}>
-          <Model url={BIG_SHIP_URL} fit={22} />
-        </Suspense>
+        {/* no inner <Suspense>: let the big_ship load bubble up to the Scene
+            boundary so the sector placeholder + lightspeed loader wait on it */}
+        <Model url={BIG_SHIP_URL} fit={22} />
       </group>
       {/* warm amber rig so the hull reads in the sector palette */}
       <pointLight color={theme.base} intensity={4} distance={60} decay={1.6} />

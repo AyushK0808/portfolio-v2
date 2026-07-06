@@ -35,7 +35,29 @@
 	"observability": {
 		"enabled": true
 	},
-	"upload_source_maps": true
+	"upload_source_maps": true,
+	/**
+	 * Non-secret config for the comms form + arena leaderboard.
+	 * SECRETS (do NOT put here) — set with `wrangler secret put <NAME>`:
+	 *   GMAIL_APP_PASSWORD   Google App Password for GMAIL_USER (16 chars)
+	 *   MONGODB_URI          MongoDB Atlas connection string
+	 */
+	"vars": {
+		"GMAIL_USER": "theofficialayush.kumar@gmail.com",
+		"CONTACT_TO": "theofficialayush.kumar@gmail.com",
+		"MONGODB_DB": "portfolio",
+		"MONGODB_COLLECTION": "contact_submissions"
+	},
+	/**
+	 * Arena high-score cache. Create the namespace once and paste its id:
+	 *   wrangler kv namespace create SCORES
+	 */
+	"kv_namespaces": [
+		{
+			"binding": "SCORES",
+			"id": "REPLACE_WITH_KV_NAMESPACE_ID"
+		}
+	]
 	/**
 	 * Smart Placement
 	 * https://developers.cloudflare.com/workers/configuration/smart-placement/#smart-placement
