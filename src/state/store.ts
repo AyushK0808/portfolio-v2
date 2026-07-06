@@ -22,6 +22,8 @@ interface AppState {
   warpStartedAt: number;
   /** length (ms) of the in-progress warp — matches the lightspeed clip */
   warpDuration: number;
+  /** wall-clock ms when POWERUP began (drives the boarding camera flight) */
+  powerupStartedAt: number;
   /** id of the POI/object currently docked/inspected, null = free roam */
   focus: string | null;
   /** id of the object currently under the reticle */
@@ -41,6 +43,8 @@ interface AppState {
   completedMissions: MissionId[];
   /** true while the MISSION COMPLETE overlay is up */
   missionCompleteShown: boolean;
+  /** true while the standalone 3D ship inspection view is open */
+  shipView: boolean;
 
   // ── actions ──
   boot: () => void; // BOOT → POWERUP
@@ -59,9 +63,13 @@ interface AppState {
   addScore: (n: number) => void;
   resetScore: () => void;
   setPilotsOnline: (n: number) => void;
+  /** leave the arena — marks E cleared and raises the completion overlay */
+  exitArena: () => void;
   /** mark a mission cleared and (optionally) raise the completion overlay */
   completeMission: (m: MissionId, celebrate?: boolean) => void;
   dismissMissionComplete: () => void;
+  openShipView: () => void;
+  closeShipView: () => void;
 }
 
 export const useApp = create<AppState>()(
@@ -71,6 +79,7 @@ export const useApp = create<AppState>()(
     warpTarget: null,
     warpStartedAt: 0,
     warpDuration: DUR.warp,
+    powerupStartedAt: 0,
     focus: null,
     hovered: null,
 
@@ -86,12 +95,13 @@ export const useApp = create<AppState>()(
 
     completedMissions: [],
     missionCompleteShown: false,
+    shipView: false,
 
     boot: () => {
       if (get().phase !== 'BOOT') return;
       audio.unlock();
       audio.powerUp();
-      set({ phase: 'POWERUP' });
+      set({ phase: 'POWERUP', powerupStartedAt: performance.now() });
       const dur = get().reducedMotion ? 400 : DUR.boot;
       window.setTimeout(() => get().bridgeReady(), dur);
     },
@@ -174,15 +184,28 @@ export const useApp = create<AppState>()(
     markScanned: (id) =>
       set((s) => (s.scanned.includes(id) ? s : { scanned: [...s.scanned, id] })),
     addScore: (n) => {
+      // arena stays open until the pilot hits EXIT GAME — no score-based
+      // auto-complete, so a single hit can't pop the completion overlay
       set((s) => ({
         arenaScore: s.arenaScore + n,
         arenaBest: Math.max(s.arenaBest, s.arenaScore + n),
       }));
-      // arena clears at 15 points — combat missions complete by score, not scroll
-      if (get().arenaScore >= 15) get().completeMission('E', true);
     },
     resetScore: () => set({ arenaScore: 0 }),
     setPilotsOnline: (n) => set({ pilotsOnline: n }),
+
+    exitArena: () => {
+      const { phase, sector } = get();
+      if (phase !== 'MISSION' || sector !== 'E') return;
+      audio.transmit();
+      // always raise the overlay (even on a repeat exit) and mark E cleared
+      set((s) => ({
+        completedMissions: s.completedMissions.includes('E')
+          ? s.completedMissions
+          : [...s.completedMissions, 'E'],
+        missionCompleteShown: true,
+      }));
+    },
 
     completeMission: (m, celebrate = false) => {
       const { completedMissions } = get();
@@ -194,6 +217,12 @@ export const useApp = create<AppState>()(
       });
     },
     dismissMissionComplete: () => set({ missionCompleteShown: false }),
+
+    openShipView: () => {
+      audio.unlock(); // opened via a click — safe to arm the audio context
+      set({ shipView: true });
+    },
+    closeShipView: () => set({ shipView: false }),
   })),
 );
 

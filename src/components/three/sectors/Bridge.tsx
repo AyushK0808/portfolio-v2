@@ -1,14 +1,15 @@
 'use client';
 
-import { useRef } from 'react';
+import { useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import { useFrame } from '@react-three/fiber';
-import { Text } from '@react-three/drei';
+import { Html, Text } from '@react-three/drei';
 import { useApp } from '@/state/store';
-import { COLORS, MISSION_ORDER, SECTORS, MissionId } from '@/lib/theme';
+import { COLORS, SECTORS, MissionId } from '@/lib/theme';
 import { DIAL_NODES } from '@/systems/flightplan';
 import { Interactable } from '../Interactable';
 import { HoloMaterial, FONT_HUD, FONT_MONO } from '../materials';
+import { InstrumentCluster } from '@/components/hud/instruments';
 
 const NODE_LABEL: Record<MissionId, string> = {
   A: 'DOSSIER',
@@ -19,11 +20,54 @@ const NODE_LABEL: Record<MissionId, string> = {
   CONTACT: 'COMMS',
 };
 
+/** mission glyphs — outline strokes (24×24 SVG path data) rasterized to
+ *  canvas textures; monochrome line-art versions of the old emoji icons */
+const NODE_ICON: Record<MissionId, string> = {
+  // pilot (was 🧑‍🚀): head + shoulders
+  A: 'M16 8a4 4 0 1 1-8 0a4 4 0 0 1 8 0M4 21v-1a8 8 0 0 1 16 0v1',
+  // satellite (was 🛰️)
+  B: 'M13 7L9 3L5 7l4 4M17 11l4 4-4 4-4-4M8 12l4 4 6-6-4-4-6 6M16 8l3-3M9 21a6 6 0 0 0-6-6',
+  // wrench (was 🛠️)
+  C: 'M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z',
+  // picture frame (was 🖼️)
+  D: 'M3 5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2zM10.5 8.5a1.5 1.5 0 1 1-3 0a1.5 1.5 0 0 1 3 0M21 15l-5-5L5 21',
+  // target (was 🎯)
+  E: 'M21 12a9 9 0 1 1-18 0a9 9 0 0 1 18 0M17 12a5 5 0 1 1-10 0a5 5 0 0 1 10 0M13 12a1 1 0 1 1-2 0a1 1 0 0 1 2 0',
+  // satellite dish (was 📡)
+  CONTACT: 'M4 10a7.31 7.31 0 0 0 10 10ZM9 15l3-3M17 13a6 6 0 0 0-6-6M21 13A10 10 0 0 0 11 3',
+};
+
+function useIconTexture(path: string, glow: string) {
+  return useMemo(() => {
+    const c = document.createElement('canvas');
+    c.width = c.height = 128;
+    const ctx = c.getContext('2d');
+    if (ctx) {
+      ctx.scale(128 / 28, 128 / 28); // 24-unit art + 2-unit bleed for the glow
+      ctx.translate(2, 2);
+      ctx.lineWidth = 1.7;
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      ctx.strokeStyle = COLORS.textPrimary;
+      ctx.shadowColor = glow;
+      ctx.shadowBlur = 10;
+      const p = new Path2D(path);
+      ctx.stroke(p);
+      ctx.stroke(p); // second pass thickens the glow
+    }
+    const tex = new THREE.CanvasTexture(c);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    tex.anisotropy = 4;
+    return tex;
+  }, [path, glow]);
+}
+
 function DialNode({ id, pos }: { id: MissionId; pos: [number, number, number] }) {
   const theme = SECTORS[id];
   const selectMission = useApp((s) => s.selectMission);
   const hovered = useApp((s) => s.hovered === `dial-${id}`);
   const mat = useRef<InstanceType<typeof HoloMaterial>>(null);
+  const iconTex = useIconTexture(NODE_ICON[id], theme.bright);
   const yaw: [number, number, number] = [0, Math.atan2(pos[0], pos[2]) + Math.PI, 0];
 
   useFrame((state, dt) => {
@@ -46,17 +90,16 @@ function DialNode({ id, pos }: { id: MissionId; pos: [number, number, number] })
             depthWrite={false}
           />
         </mesh>
-        <Text
-          font={FONT_HUD}
-          fontSize={0.15}
-          letterSpacing={0.1}
-          color={hovered ? theme.bright : theme.base}
-          anchorX="center"
-          anchorY="middle"
-          position={[0, 0.1, 0.01]}
-        >
-          {id === 'CONTACT' ? '✉' : id}
-        </Text>
+        <mesh position={[0, 0.1, 0.01]}>
+          <planeGeometry args={[0.3, 0.3]} />
+          <meshBasicMaterial
+            map={iconTex}
+            transparent
+            toneMapped={false}
+            depthWrite={false}
+            opacity={hovered ? 1 : 0.85}
+          />
+        </mesh>
         <Text
           font={FONT_HUD}
           fontSize={0.072}
@@ -64,7 +107,7 @@ function DialNode({ id, pos }: { id: MissionId; pos: [number, number, number] })
           color={hovered ? theme.bright : theme.base}
           anchorX="center"
           anchorY="middle"
-          position={[0, -0.13, 0.01]}
+          position={[0, -0.15, 0.01]}
         >
           {NODE_LABEL[id]}
         </Text>
@@ -79,10 +122,11 @@ function DialNode({ id, pos }: { id: MissionId; pos: [number, number, number] })
  */
 export default function Bridge() {
   const ring = useRef<THREE.Mesh>(null);
-  // the dial is the "select mission" UI — keep it stowed on the title screen
-  // (phase BOOT) and only raise it once the pilot powers up
+  // the dial is the "select mission" UI — keep it stowed through the title
+  // screen AND the boarding flight (the POWERUP camera dives right through
+  // the dial's airspace); it raises the moment the pilot hits the seat
   const phase = useApp((s) => s.phase);
-  const dialUp = phase !== 'BOOT';
+  const dialUp = phase !== 'BOOT' && phase !== 'POWERUP';
 
   useFrame((state) => {
     if (ring.current) ring.current.rotation.z = state.clock.elapsedTime * 0.05;
@@ -107,57 +151,38 @@ export default function Bridge() {
               toneMapped={false}
             />
           </mesh>
+
+          {/* radar + instrument charts projected inside the dial, tilted
+              toward the pilot like a holo console readout — bridge only.
+              gated on phase (not just sector) so the DOM <Html> can't flash
+              through the lightspeed tunnel: during warp `sector` stays BRIDGE
+              for the first half of the transition (store swaps it mid-warp) */}
+          {phase === 'BRIDGE' && (
+            <Html
+              transform
+              position={[0, 0.68, -2.45]}
+              rotation={[-0.5, 0, 0]}
+              scale={0.22}
+              zIndexRange={[30, 10]}
+              style={{ pointerEvents: 'none', userSelect: 'none', opacity: 0.94 }}
+            >
+              <InstrumentCluster />
+            </Html>
+          )}
+          {/* header sits above the node rows — the instrument cluster now
+              owns the space over the base ring */}
           <Text
             font={FONT_MONO}
             fontSize={0.07}
             color={COLORS.textMuted}
             anchorX="center"
-            position={[0, 0.62, -2.9]}
-            rotation={[-0.4, 0, 0]}
+            position={[0, 2.55, -3.4]}
+            rotation={[0.12, 0, 0]}
           >
             NAV DIAL v2.0 — PLOT HYPERSPACE VECTOR
           </Text>
         </group>
       )}
-
-      {/* distant scenery: a far-off station and planet glow for depth */}
-      <mesh position={[-60, 18, -160]}>
-        <sphereGeometry args={[22, 32, 32]} />
-        <meshStandardMaterial color="#101B2E" roughness={1} />
-      </mesh>
-      <mesh position={[-60, 18, -160]} scale={1.03}>
-        <sphereGeometry args={[22, 32, 32]} />
-        <meshBasicMaterial color={COLORS.hudCyanDim} transparent opacity={0.08} side={THREE.BackSide} />
-      </mesh>
-      <group position={[45, -6, -120]} rotation={[0.2, 0.8, 0.1]}>
-        <mesh>
-          <cylinderGeometry args={[1.2, 1.2, 14, 8]} />
-          <meshStandardMaterial color={COLORS.panelEdge} metalness={0.8} roughness={0.5} />
-        </mesh>
-        <mesh rotation={[Math.PI / 2, 0, 0]}>
-          <torusGeometry args={[6, 0.5, 8, 32]} />
-          <meshStandardMaterial color={COLORS.panelEdge} metalness={0.8} roughness={0.5} />
-        </mesh>
-      </group>
-
-      {/* distant capital-ship wedge slipping by — a quiet Star Wars nod */}
-      <group position={[-90, -20, -230]} rotation={[0.06, 0.5, 0.02]}>
-        {/* long flat triangular hull (3-sided cone, squashed) */}
-        <mesh rotation={[Math.PI / 2, 0, 0]} scale={[10, 46, 2.4]}>
-          <coneGeometry args={[1, 1, 3]} />
-          <meshStandardMaterial color="#0B1420" metalness={0.6} roughness={0.6} />
-        </mesh>
-        {/* command tower */}
-        <mesh position={[0, 1.2, 16]}>
-          <boxGeometry args={[3.2, 2.2, 4]} />
-          <meshStandardMaterial color="#0E1826" metalness={0.7} roughness={0.5} />
-        </mesh>
-        {/* faint cyan running lights along the belly */}
-        <mesh position={[0, -1, -2]}>
-          <boxGeometry args={[9, 0.12, 40]} />
-          <meshBasicMaterial color={COLORS.hudCyanDim} transparent opacity={0.25} toneMapped={false} />
-        </mesh>
-      </group>
     </group>
   );
 }

@@ -27,7 +27,7 @@ const jetbrains = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-	title: `${SITE.title} — ${SITE.tagline}`,
+	title: `${SITE.title}`,
 	description: SITE.description,
 	metadataBase: new URL(SITE.url),
 	openGraph: {

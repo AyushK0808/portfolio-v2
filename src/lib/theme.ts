@@ -61,11 +61,12 @@ export const SECTORS: Record<SectorId, SectorTheme> = {
   B: {
     id: 'B',
     name: 'MISSION B — FLIGHT LOG',
-    callsign: 'TRAJECTORY CORRIDOR',
-    briefing: `${EXPERIENCE.length} OUTPOSTS LOGGED ACROSS THE GALAXY. SCROLL TO FLY THE CORRIDOR — AND STAY ON TARGET.`,
-    base: '#4C8DFF',
-    bright: '#8FB6FF',
-    deep: '#1E3A8A',
+    callsign: 'CORUSCANT APPROACH',
+    briefing: `${EXPERIENCE.length} OUTPOSTS LOGGED ON FINAL APPROACH TO CORUSCANT. SCROLL TO FLY THE LANE — THE CITY-PLANET GROWS OFF THE PORT BOW.`,
+    // golden city-glow palette to match Coruscant's endless skyline
+    base: '#FFD75E',
+    bright: '#FFEDAF',
+    deep: '#8A6420',
     fogDensity: 0.025,
   },
   C: {
@@ -91,9 +92,9 @@ export const SECTORS: Record<SectorId, SectorTheme> = {
   },
   E: {
     id: 'E',
-    name: 'MISSION E — ARENA',
-    callsign: 'COMBAT RANGE',
-    briefing: 'ASTEROIDS INBOUND ON THE COMBAT RANGE. LOCK S-FOILS, AIM WITH THE RETICLE — GREAT SHOT, RED FIVE.',
+    name: 'MISSION E — MUSTAFAR ARENA',
+    callsign: 'MUSTAFAR RANGE',
+    briefing: 'ASTEROIDS INBOUND OVER MUSTAFAR’S LAVA FIELDS. LOCK S-FOILS, HOLD THE HIGH GROUND — GREAT SHOT, RED FIVE.',
     base: '#FF5A2E',
     bright: '#FFA24B',
     deep: '#B01E1E',
@@ -119,6 +120,7 @@ export const DUR = {
   ui: 320,
   dock: 900,
   warp: 1500,
-  boot: 2600,
+  // boarding flight: exterior orbit → over the nose → through the canopy
+  boot: 4600,
   decodePerChar: 35,
 } as const;

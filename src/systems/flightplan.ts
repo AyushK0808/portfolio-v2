@@ -18,15 +18,19 @@ export interface Pose {
   look: V3;
 }
 
-// ── BRIDGE: holographic mission dial, arc above the dashboard ──
+// ── BRIDGE: holographic mission dial, 2×3 grid above the dashboard ──
+// top row A B C, bottom row D E CONTACT; side columns pull slightly closer
+// so the panels angle in toward the pilot
 export const DIAL_NODES = MISSION_ORDER.map((id, i) => {
-  const n = MISSION_ORDER.length;
-  const spread = Math.PI * 0.52; // arc width
-  const a = -spread / 2 + (spread * i) / (n - 1);
-  const r = 3.1;
+  const row = i < 3 ? 0 : 1;
+  const col = i % 3;
   return {
     id,
-    pos: [Math.sin(a) * r, 1.45 + Math.cos(a * 2.2) * 0.12, -Math.cos(a) * r] as V3,
+    pos: [
+      (col - 1) * 1.42,
+      row === 0 ? 2.0 : 1.18,
+      (row === 0 ? -3.3 : -3.0) + Math.abs(col - 1) * 0.22,
+    ] as V3,
   };
 });
 

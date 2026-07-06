@@ -1,20 +1,76 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { useFrame } from '@react-three/fiber';
-import { Text } from '@react-three/drei';
+import { Text, useGLTF } from '@react-three/drei';
 import { useApp } from '@/state/store';
 import { audio } from '@/systems/audio';
 import { COLORS, SECTORS } from '@/lib/theme';
 import { ARTIFACT_NODES, FLIGHT } from '@/systems/flightplan';
 import { PROJECTS, Project } from '@/content/projects';
+import { Model } from '../Model';
 import { HoloPanel, HoloText } from '../HoloPanel';
 import { Interactable } from '../Interactable';
 import { HoloMarker, faceYaw } from '../Markers';
 import { FONT_HUD } from '../materials';
 
 const theme = SECTORS.C;
+
+const ASTEROID_URL = '/3d/asteroid.glb';
+const ASSET_PKG_URL = '/3d/asset_package.glb';
+useGLTF.preload(ASTEROID_URL);
+useGLTF.preload(ASSET_PKG_URL);
+
+const drng = (a: number) => {
+  const x = Math.sin(a * 127.1 + 311.7) * 43758.5453;
+  return x - Math.floor(x);
+};
+
+/**
+ * Debris field set dressing: real asteroid rocks drifting through the field,
+ * plus a couple of tumbling supply "asset packages" adrift among the project
+ * artifacts. Slowly spun as one group so the whole field feels alive.
+ */
+function DebrisField() {
+  const spin = useRef<THREE.Group>(null);
+  useFrame((_, dt) => {
+    if (spin.current) spin.current.rotation.y += dt * 0.02;
+  });
+
+  const rocks = useMemo(
+    () =>
+      Array.from({ length: 15 }, (_, i) => {
+        const r = 9 + drng(i) * 26;
+        const a = drng(i + 500) * Math.PI * 2;
+        const y = (drng(i + 900) - 0.5) * 16;
+        return {
+          pos: [Math.cos(a) * r, y, -30 + Math.sin(a) * r] as [number, number, number],
+          fit: 1.4 + drng(i + 1300) * 3.6,
+          rot: [drng(i) * 6.28, drng(i + 1) * 6.28, drng(i + 2) * 6.28] as [number, number, number],
+        };
+      }),
+    [],
+  );
+
+  const packages: { pos: [number, number, number]; rot: [number, number, number]; fit: number }[] = [
+    { pos: [6.5, 2.4, -20], rot: [0.5, 0.8, 0.2], fit: 3.2 },
+    { pos: [-9, -3.5, -34], rot: [1.1, 0.3, 0.9], fit: 3.6 },
+  ];
+
+  return (
+    <group ref={spin}>
+      <Suspense fallback={null}>
+        {rocks.map((rk, i) => (
+          <Model key={`ast-${i}`} url={ASTEROID_URL} fit={rk.fit} position={rk.pos} rotation={rk.rot} />
+        ))}
+        {packages.map((pk, i) => (
+          <Model key={`pkg-${i}`} url={ASSET_PKG_URL} fit={pk.fit} position={pk.pos} rotation={pk.rot} />
+        ))}
+      </Suspense>
+    </group>
+  );
+}
 
 /** distinct low-poly artifact per project mesh type (bible §7.6) */
 function ArtifactMesh({ type, seed }: { type: Project['mesh']; seed: number }) {
@@ -171,20 +227,15 @@ export default function SectorC() {
     sweepRef.current.position.y = THREE.MathUtils.lerp(-1.6, 1.6, p);
   });
 
-  // micro-debris cloud (cinematic tier only)
+  // faint micro-debris haze behind the real asteroids (cinematic tier only)
   const debris = useMemo(() => {
     const m = new THREE.Matrix4();
     const list: THREE.Matrix4[] = [];
-    const rng = (a: number) => {
-      // deterministic pseudo-random
-      const x = Math.sin(a * 127.1 + 311.7) * 43758.5453;
-      return x - Math.floor(x);
-    };
-    for (let i = 0; i < 220; i++) {
-      const r = 12 + rng(i) * 26;
-      const a = rng(i + 500) * Math.PI * 2;
-      const y = (rng(i + 900) - 0.5) * 18;
-      const s = 0.03 + rng(i + 1300) * 0.1;
+    for (let i = 0; i < 160; i++) {
+      const r = 14 + drng(i) * 26;
+      const a = drng(i + 500) * Math.PI * 2;
+      const y = (drng(i + 900) - 0.5) * 18;
+      const s = 0.03 + drng(i + 1300) * 0.1;
       m.makeScale(s, s, s);
       m.setPosition(Math.cos(a) * r, y, -30 + Math.sin(a) * r);
       list.push(m.clone());
@@ -194,6 +245,8 @@ export default function SectorC() {
 
   return (
     <group>
+      <DebrisField />
+
       {quality === 'CINEMATIC' && (
         <instancedMesh
           args={[undefined, undefined, debris.length]}

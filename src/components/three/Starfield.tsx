@@ -15,6 +15,7 @@ export function Starfield() {
   const theme = useSectorTheme();
   const quality = useApp((s) => s.quality);
   const phase = useApp((s) => s.phase);
+  const sector = useApp((s) => s.sector);
   const nebulaRef = useRef<InstanceType<typeof NebulaMaterial>>(null);
   const nebulaMesh = useRef<THREE.Mesh>(null);
   const starsRef = useRef<THREE.Group>(null);
@@ -35,8 +36,13 @@ export function Starfield() {
       (m.uColorB as THREE.Color).lerp(targetB.current, k);
       // the title screen leans on the nebula as its hero — bloom it up there,
       // then settle back once the pilot is flying
-      const target = phase === 'BOOT' ? baseIntensity * 1.3 : baseIntensity;
+      const target = phase === 'BOOT' ? baseIntensity * 1.55 : baseIntensity;
       m.uIntensity += (target - m.uIntensity) * Math.min(dt * 0.9, 1);
+      // full spectral show on the title/menu screens; missions keep a hint
+      // of it so their sector palette still dominates
+      const onBridge = phase === 'BOOT' || phase === 'POWERUP' || sector === 'BRIDGE';
+      const multiTarget = onBridge ? 1 : 0.2;
+      m.uMulti += (multiTarget - m.uMulti) * Math.min(dt * 0.9, 1);
     }
     // slow parallax drift opposite to look
     if (starsRef.current) {

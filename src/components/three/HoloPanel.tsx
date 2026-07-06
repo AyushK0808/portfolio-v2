@@ -90,7 +90,11 @@ export function HoloPanel({
               font={FONT_HUD}
               fontSize={0.1}
               letterSpacing={0.14}
-              color={color}
+              color={COLORS.textPrimary}
+              outlineWidth={0}
+              outlineColor={color}
+              outlineBlur={0.035}
+              outlineOpacity={0.9}
               anchorX="left"
               anchorY="top"
               position={[-width / 2 + 0.08, height / 2 - 0.07, 0.01]}
@@ -104,6 +108,14 @@ export function HoloPanel({
     </group>
   );
 }
+
+/* panel text renders white only (design note: no colored fills on cards) —
+   the neutral hierarchy colors map to opacity, anything else becomes a glow */
+const NEUTRAL_OPACITY: Record<string, number> = {
+  [COLORS.textPrimary]: 1,
+  [COLORS.textSecondary]: 0.78,
+  [COLORS.textMuted]: 0.5,
+};
 
 /** monospace data row helper for panels */
 export function HoloText({
@@ -121,17 +133,25 @@ export function HoloText({
   x: number;
   y: number;
   size?: number;
+  /** accent colors tint the glow, not the fill — text itself stays white */
   color?: string;
   maxWidth?: number;
   font?: string;
   anchorX?: 'left' | 'center' | 'right';
   lineHeight?: number;
 }) {
+  const neutral = NEUTRAL_OPACITY[color];
+  const glow = neutral === undefined;
   return (
     <Text
       font={font}
       fontSize={size}
-      color={color}
+      color={COLORS.textPrimary}
+      fillOpacity={neutral ?? 1}
+      outlineWidth={0}
+      outlineColor={glow ? color : COLORS.textPrimary}
+      outlineBlur={glow ? size * 0.35 : 0}
+      outlineOpacity={0.85}
       anchorX={anchorX}
       anchorY="top"
       position={[x, y, 0.01]}

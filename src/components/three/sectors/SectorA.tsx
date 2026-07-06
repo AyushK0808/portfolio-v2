@@ -1,13 +1,15 @@
 'use client';
 
-import { useRef } from 'react';
+import { Suspense, useRef } from 'react';
 import * as THREE from 'three';
 import { useFrame } from '@react-three/fiber';
+import { useGLTF } from '@react-three/drei';
 import { useApp } from '@/state/store';
 import { COLORS, SECTORS } from '@/lib/theme';
 import { DOSSIER_POS, STATION_POS, SUBSYS_NODES, FLIGHT } from '@/systems/flightplan';
 import { DOSSIER } from '@/content/bio';
 import { SUBSYSTEMS } from '@/content/skills';
+import { Model } from '../Model';
 import { HoloPanel, HoloText, HoloBar } from '../HoloPanel';
 import { Interactable } from '../Interactable';
 import { HoloMarker, faceYaw } from '../Markers';
@@ -15,68 +17,29 @@ import { FONT_HUD } from '../materials';
 
 const theme = SECTORS.A;
 
-/** friendly modular home station — procedural, warm amber emissives */
+const BIG_SHIP_URL = '/3d/big_ship.glb';
+useGLTF.preload(BIG_SHIP_URL);
+
+/** home station — the big_ship capital vessel anchoring the sector, warm amber rig */
 function HomeStation() {
   const group = useRef<THREE.Group>(null);
-  const ring = useRef<THREE.Mesh>(null);
 
   useFrame((state) => {
-    if (group.current) group.current.rotation.y = state.clock.elapsedTime * 0.03;
-    if (ring.current) ring.current.rotation.z = state.clock.elapsedTime * 0.06;
+    // slow yaw drift so the capital ship feels like it's holding station
+    if (group.current) group.current.rotation.y = state.clock.elapsedTime * 0.02;
   });
 
-  const hull = <meshStandardMaterial color="#1A2230" metalness={0.75} roughness={0.45} />;
-  const glow = (
-    <meshStandardMaterial
-      color="#000000"
-      emissive={theme.base}
-      emissiveIntensity={1.6}
-      toneMapped={false}
-    />
-  );
-
   return (
-    <group ref={group} position={STATION_POS}>
-      {/* core */}
-      <mesh>
-        <cylinderGeometry args={[2.2, 2.2, 7, 10]} />
-        {hull}
-      </mesh>
-      <mesh position={[0, 4.2, 0]}>
-        <cylinderGeometry args={[0.9, 1.6, 1.6, 8]} />
-        {hull}
-      </mesh>
-      {/* docking ring */}
-      <mesh ref={ring} rotation={[Math.PI / 2, 0, 0]}>
-        <torusGeometry args={[6.5, 0.45, 8, 40]} />
-        {hull}
-      </mesh>
-      {/* ring spokes */}
-      {[0, 1, 2, 3].map((i) => (
-        <mesh key={i} rotation={[0, (i * Math.PI) / 2, 0]}>
-          <boxGeometry args={[13, 0.18, 0.18]} />
-          {hull}
-        </mesh>
-      ))}
-      {/* window bands */}
-      <mesh position={[0, 1.4, 0]}>
-        <cylinderGeometry args={[2.22, 2.22, 0.16, 10]} />
-        {glow}
-      </mesh>
-      <mesh position={[0, -0.8, 0]}>
-        <cylinderGeometry args={[2.22, 2.22, 0.16, 10]} />
-        {glow}
-      </mesh>
-      {/* antenna */}
-      <mesh position={[0, 6.3, 0]}>
-        <cylinderGeometry args={[0.04, 0.04, 2.6, 6]} />
-        {hull}
-      </mesh>
-      <mesh position={[0, 7.7, 0]}>
-        <sphereGeometry args={[0.14, 8, 8]} />
-        {glow}
-      </mesh>
-      <pointLight color={theme.base} intensity={3} distance={40} decay={1.8} />
+    <group position={STATION_POS}>
+      <group ref={group}>
+        <Suspense fallback={null}>
+          <Model url={BIG_SHIP_URL} fit={22} />
+        </Suspense>
+      </group>
+      {/* warm amber rig so the hull reads in the sector palette */}
+      <pointLight color={theme.base} intensity={4} distance={60} decay={1.6} />
+      <pointLight position={[0, 14, 8]} color={theme.bright} intensity={3} distance={50} decay={1.8} />
+      <directionalLight position={[10, 12, 6]} color="#FFE0A8" intensity={1.4} />
     </group>
   );
 }

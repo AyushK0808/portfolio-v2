@@ -162,6 +162,18 @@ body[data-scroll="true"] {
 	0%, 100% { opacity: 1; }
 	50% { opacity: 0; }
 }
+@keyframes marquee-scroll {
+	from { transform: translateX(0); }
+	to { transform: translateX(-50%); }
+}
+
+/* news ticker — expects exactly two identical children for a seamless loop */
+.marquee-track {
+	display: inline-flex;
+	white-space: nowrap;
+	width: max-content;
+	animation: marquee-scroll 55s linear infinite;
+}
 
 .animate-breathe { animation: breathe 3s ease-in-out infinite; }
 .animate-hud-in { animation: hud-in var(--dur-ui) var(--ease-hud-in) both; }
@@ -182,7 +194,8 @@ body[data-scroll="true"] {
 @media (prefers-reduced-motion: reduce) {
 	.animate-breathe,
 	.animate-flicker-in,
-	.canopy-scanlines {
+	.canopy-scanlines,
+	.marquee-track {
 		animation: none;
 	}
 }

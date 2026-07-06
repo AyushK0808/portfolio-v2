@@ -21,6 +21,9 @@ type TxState = 'IDLE' | 'SENDING' | 'SENT' | 'ERROR';
 export default function SectorContact() {
   const mat = useRef<InstanceType<typeof CrtMaterial>>(null);
   const [tx, setTx] = useState<TxState>('IDLE');
+  // the sector mounts mid-warp, but <Html> is real DOM — the 3D visibility
+  // flag can't hide it, so keep the terminal down until we've dropped out
+  const arrived = useApp((s) => s.phase === 'MISSION');
 
   useFrame((state) => {
     if (mat.current) mat.current.uTime = state.clock.elapsedTime;
@@ -70,11 +73,15 @@ export default function SectorContact() {
         <meshStandardMaterial color="#10161f" roughness={0.6} metalness={0.5} />
       </mesh>
 
+      {arrived && (
       <Html
         transform
         position={[0, 0.02, 0.03]}
         rotation={[-0.06, 0, 0]}
         scale={0.16}
+        // stay below the HUD layer (z-40) so the MISSION COMPLETE overlay
+        // can actually cover the form (drei default is z ~16.7M)
+        zIndexRange={[30, 10]}
         style={{ width: '760px', pointerEvents: 'auto', userSelect: 'none' }}
       >
         <div
@@ -170,6 +177,7 @@ export default function SectorContact() {
           </form>
         </div>
       </Html>
+      )}
 
       <pointLight position={[0, 0.4, 1.6]} color={theme.base} intensity={1.8} distance={8} decay={1.8} />
     </group>

@@ -25,9 +25,12 @@ export function WarpTunnel() {
     if (!m) return;
     m.uTime = state.clock.elapsedTime;
     if (phase === 'WARP' && !reducedMotion) {
-      m.uProgress = warpEnvelope(warpStartedAt, performance.now(), warpDuration);
+      const now = performance.now();
+      m.uProgress = warpEnvelope(warpStartedAt, now, warpDuration);
+      m.uRaw = Math.min(Math.max((now - warpStartedAt) / warpDuration, 0), 1);
     } else {
       m.uProgress = 0;
+      m.uRaw = 0;
     }
     if (warpTarget) {
       (m.uColorTo as THREE.Color).set(SECTORS[warpTarget].base);

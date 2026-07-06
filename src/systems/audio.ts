@@ -2,8 +2,8 @@
  * Audio engine. Short UI cues are synthesized with WebAudio (oscillators +
  * filtered noise); two streamed assets carry the atmosphere: space_sound.mp3
  * (looping background ambience) and lighspeed_sound.mp3 (the hyperspace jump —
- * the warp visual is synced to this clip's ~13.5s length). Muted by default;
- * nothing plays before a user gesture (bible §11).
+ * time-compressed via playbackRate so it lands inside the fixed 5s warp).
+ * Muted by default; nothing plays before a user gesture (bible §11).
  */
 
 class AudioEngine {
@@ -15,8 +15,14 @@ class AudioEngine {
   /** streamed audio assets (background ambience + hyperspace jump) */
   private bgMusic: HTMLAudioElement | null = null;
   private warpSound: HTMLAudioElement | null = null;
-  /** measured length of the lightspeed clip — the warp visual is synced to it */
-  warpDuration = 13.48;
+  /** looping ship-interior ambience (3D ship view + mission decks) */
+  private shipSound: HTMLAudioElement | null = null;
+  /** whether a screen currently wants the ship ambience layer up */
+  private shipWanted = false;
+  /** fixed hyperspace jump length (s) — the clip is sped up to fit it */
+  warpDuration = 5;
+  /** measured length of the raw lightspeed clip, used to derive playbackRate */
+  private warpClipLen = 13.48;
 
   unlock() {
     if (typeof window === 'undefined') return;
@@ -47,7 +53,7 @@ class AudioEngine {
       w.preload = 'auto';
       w.volume = 0.6;
       w.addEventListener('loadedmetadata', () => {
-        if (Number.isFinite(w.duration) && w.duration > 0) this.warpDuration = w.duration;
+        if (Number.isFinite(w.duration) && w.duration > 0) this.warpClipLen = w.duration;
       });
       this.warpSound = w;
     }
@@ -56,15 +62,46 @@ class AudioEngine {
 
   setMuted(muted: boolean) {
     this.muted = muted;
-    if (this.bgMusic) {
-      if (muted) this.bgMusic.pause();
-      else void this.bgMusic.play().catch(() => {});
+    if (muted) {
+      this.bgMusic?.pause();
+      this.shipSound?.pause();
+      this.warpSound?.pause();
+    } else if (this.shipWanted) {
+      // a ship-ambience screen is up — keep the base ambience ducked
+      this.bgMusic?.pause();
+      void this.shipSound?.play().catch(() => {});
+    } else {
+      void this.bgMusic?.play().catch(() => {});
     }
-    if (this.warpSound && muted) this.warpSound.pause();
     if (!this.ctx || !this.master) return;
     const t = this.ctx.currentTime;
     this.master.gain.cancelScheduledValues(t);
     this.master.gain.linearRampToValueAtTime(muted ? 0 : 0.5, t + 0.15);
+  }
+
+  /**
+   * Ship ambience layer (spaceship.mp3) — plays on the 3D ship view and every
+   * mission deck except the comms channel. Ducks the base space ambience while
+   * up; obeys the global COMMS mute like every other streamed cue.
+   */
+  shipAmbience(on: boolean) {
+    if (typeof window === 'undefined') return;
+    this.shipWanted = on;
+    if (on && !this.shipSound) {
+      const s = new Audio('/spaceship.mp3');
+      s.loop = true;
+      s.preload = 'auto';
+      s.volume = 0.4;
+      this.shipSound = s;
+    }
+    if (this.muted) return; // gated on COMMS — nothing plays while muted
+    if (on) {
+      this.bgMusic?.pause();
+      void this.shipSound?.play().catch(() => {});
+    } else {
+      this.shipSound?.pause();
+      void this.bgMusic?.play().catch(() => {});
+    }
   }
 
   private get ready() {
@@ -139,6 +176,11 @@ class AudioEngine {
       if (w && !this.muted) {
         try {
           w.currentTime = 0;
+          // squeeze the whole clip into the 5s jump; raw speed-up (no pitch
+          // correction) reads as the engines actually spooling harder
+          w.playbackRate = Math.min(16, Math.max(1, this.warpClipLen / this.warpDuration));
+          const wp = w as HTMLAudioElement & { preservesPitch?: boolean };
+          if ('preservesPitch' in wp) wp.preservesPitch = false;
           void w.play().catch(() => {});
         } catch {
           /* not yet loaded — silent, visual still runs */

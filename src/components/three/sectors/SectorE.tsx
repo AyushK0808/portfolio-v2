@@ -1,16 +1,84 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { useFrame, useThree } from '@react-three/fiber';
-import { Billboard, Line, Text } from '@react-three/drei';
+import { Billboard, Line, Text, useGLTF } from '@react-three/drei';
 import { useApp } from '@/state/store';
 import { audio } from '@/systems/audio';
 import { COLORS, SECTORS } from '@/lib/theme';
+import { Model } from '../Model';
 import { HoloPanel, HoloText } from '../HoloPanel';
 import { FONT_HUD } from '../materials';
 
 const theme = SECTORS.E;
+
+const MUSTAFAR_URL = '/3d/mustafar.glb';
+const ASTEROID_URL = '/3d/asteroid.glb';
+useGLTF.preload(MUSTAFAR_URL);
+useGLTF.preload(ASTEROID_URL);
+
+/** the lava world Mustafar filling the horizon behind the combat range —
+ *  dead ahead and below the fight, well past the farthest asteroid spawn */
+function Mustafar() {
+  const group = useRef<THREE.Group>(null);
+  useFrame((state) => {
+    if (group.current) group.current.rotation.y = state.clock.elapsedTime * 0.012;
+  });
+  return (
+    <group position={[8, -30, -165]}>
+      <group ref={group}>
+        <Suspense fallback={null}>
+          {/* lava fields carry themselves on the authored emissive map */}
+          <Model url={MUSTAFAR_URL} fit={150} emissiveBoost={8} noFog />
+        </Suspense>
+      </group>
+      {/* molten glow bleeding up into the arena */}
+      <pointLight position={[-6, 60, 70]} color="#FF6A2E" intensity={14} distance={240} decay={1.3} />
+    </group>
+  );
+}
+
+/**
+ * Pulls the rock mesh out of the asteroid GLB for instancing: recentered and
+ * normalized to a 2-unit longest axis so the arena's hit-test radius
+ * (a.scale * 1.5) keeps meaning the same thing it did for the old unit
+ * icosahedron.
+ */
+function useAsteroidRock() {
+  const { scene } = useGLTF(ASTEROID_URL);
+  return useMemo(() => {
+    let src: THREE.Mesh | null = null;
+    scene.traverse((o) => {
+      if (!src && (o as THREE.Mesh).isMesh) src = o as THREE.Mesh;
+    });
+    if (!src) {
+      return {
+        geo: new THREE.IcosahedronGeometry(1, 0),
+        mat: new THREE.MeshStandardMaterial({ color: '#2A1512', roughness: 0.9, metalness: 0.1 }),
+      };
+    }
+    const mesh = src as THREE.Mesh;
+    const geo = mesh.geometry.clone();
+    geo.computeBoundingBox();
+    const size = new THREE.Vector3();
+    const center = new THREE.Vector3();
+    geo.boundingBox!.getSize(size);
+    geo.boundingBox!.getCenter(center);
+    geo.translate(-center.x, -center.y, -center.z);
+    const k = 2 / (Math.max(size.x, size.y, size.z) || 1);
+    geo.scale(k, k, k);
+    const mat = (Array.isArray(mesh.material) ? mesh.material[0] : mesh.material).clone();
+    // rocks tumble up to ~80 units out, past the floodlights — a touch of
+    // self-emission keeps live targets readable against the void
+    const std = mat as THREE.MeshStandardMaterial;
+    if (std.emissive && std.color) {
+      std.emissive = std.color.clone();
+      std.emissiveIntensity = 0.35;
+    }
+    return { geo, mat };
+  }, [scene]);
+}
 
 const N_AST = 24;
 const BOTS = [
@@ -68,6 +136,7 @@ function spawnAsteroid(a: Asteroid) {
  */
 export default function SectorE() {
   const { camera, gl } = useThree();
+  const rock = useAsteroidRock();
   const addScore = useApp((s) => s.addScore);
   const setPilotsOnline = useApp((s) => s.setPilotsOnline);
   const arenaScore = useApp((s) => s.arenaScore);
@@ -236,11 +305,10 @@ export default function SectorE() {
 
   return (
     <group>
-      {/* asteroid swarm */}
-      <instancedMesh ref={instRef} args={[undefined, undefined, N_AST]} frustumCulled={false}>
-        <icosahedronGeometry args={[1, 0]} />
-        <meshStandardMaterial color="#2A1512" roughness={0.9} metalness={0.1} />
-      </instancedMesh>
+      <Mustafar />
+
+      {/* asteroid swarm — real rock mesh from the shared asteroid asset */}
+      <instancedMesh ref={instRef} args={[rock.geo, rock.mat, N_AST]} frustumCulled={false} />
 
       {/* wingmate bots */}
       {BOTS.map((b, i) => (

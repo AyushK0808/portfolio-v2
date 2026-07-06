@@ -1,18 +1,68 @@
 'use client';
 
-import { useMemo, useRef } from 'react';
+import { Suspense, useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import { useFrame } from '@react-three/fiber';
+import { useGLTF } from '@react-three/drei';
 import { useApp } from '@/state/store';
 import { COLORS, SECTORS } from '@/lib/theme';
 import { CORRIDOR_NODES, FLIGHT } from '@/systems/flightplan';
 import { EXPERIENCE, ExperienceNode } from '@/content/experience';
+import { Model } from '../Model';
 import { HoloPanel, HoloText } from '../HoloPanel';
 import { Interactable } from '../Interactable';
 import { HoloMarker, faceYaw } from '../Markers';
 import { FONT_HUD } from '../materials';
 
 const theme = SECTORS.B;
+
+const CORUSCANT_URL = '/3d/coruscant.glb';
+useGLTF.preload(CORUSCANT_URL);
+
+// approach path off the port bow: a distant speck at the corridor entry that
+// swells to fill the left of the frame by the final flight log
+const CORUSCANT_FAR = new THREE.Vector3(-85, -14, -150);
+const CORUSCANT_NEAR = new THREE.Vector3(
+  -42,
+  -4,
+  CORRIDOR_NODES[CORRIDOR_NODES.length - 1].pos[2] - 53,
+);
+const coruscantTarget = new THREE.Vector3();
+
+/** Coruscant off the port bow, drawing closer with every outpost logged */
+function Coruscant() {
+  const group = useRef<THREE.Group>(null);
+  const spin = useRef<THREE.Group>(null);
+  const focus = useApp((s) => s.focus);
+  const idx = focus ? CORRIDOR_NODES.findIndex((n) => n.id === focus) : -1;
+  const progress = (idx + 1) / CORRIDOR_NODES.length;
+
+  useFrame((state, dt) => {
+    if (spin.current) spin.current.rotation.y = state.clock.elapsedTime * 0.01;
+    if (group.current) {
+      // slow cinematic drift toward the mark for the current flight log
+      coruscantTarget.copy(CORUSCANT_FAR).lerp(CORUSCANT_NEAR, progress);
+      group.current.position.lerp(coruscantTarget, 1 - Math.exp(-dt * 0.9));
+    }
+  });
+
+  return (
+    <group ref={group} position={CORUSCANT_FAR}>
+      <group ref={spin}>
+        <Suspense fallback={null}>
+          {/* night-side city: the authored emissive light-grid reads the surface
+              detail, but on its own the dark grey hull vanishes against the void.
+              A short-range key light (below) grazes the near hemisphere so the
+              planet reads as a lit body without reaching the cockpit at origin. */}
+          <Model url={CORUSCANT_URL} fit={96} emissiveBoost={10} noFog />
+        </Suspense>
+      </group>
+      {/* planet-local key light: rides with Coruscant, distance-capped well
+          short of the ~150-unit gap to the cockpit so struts stay unlit */}
+      <pointLight position={[38, 16, 42]} color="#cfe0ff" intensity={120} distance={120} decay={0.9} />
+    </group>
+  );
+}
 
 const KIND_TAG: Record<ExperienceNode['kind'], string> = {
   education: 'ACADEMY',
@@ -104,6 +154,8 @@ export default function SectorB() {
 
   return (
     <group>
+      <Coruscant />
+
       {/* flight line ribbon */}
       <mesh geometry={ribbon}>
         <meshBasicMaterial ref={pulse} color={theme.base} transparent opacity={0.4} toneMapped={false} />

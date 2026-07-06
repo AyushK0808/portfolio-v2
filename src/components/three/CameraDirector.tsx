@@ -5,6 +5,7 @@ import * as THREE from 'three';
 import { useFrame, useThree } from '@react-three/fiber';
 import { easing } from 'maath';
 import { useApp } from '@/state/store';
+import { DUR } from '@/lib/theme';
 import { FLIGHT, warpEnvelope } from '@/systems/flightplan';
 
 /** live camera telemetry for the HUD coordinates ticker (non-reactive) */
@@ -16,10 +17,20 @@ export const camTelemetry = {
 const PITCH_LIMIT = 1.22; // ±70°
 const FLY_SPEED = 9;
 
+/** visual center of the HeroShip hull — the title-screen orbit target */
+const SHIP_FOCUS = new THREE.Vector3(0, 0.75, -1.0);
+const ORBIT_R = 15.6;
+const orbitPos = (t: number, out: THREE.Vector3) =>
+  out.set(
+    SHIP_FOCUS.x + Math.sin(t * 0.11) * ORBIT_R,
+    3.1 + Math.sin(t * 0.21) * 0.55,
+    SHIP_FOCUS.z + Math.cos(t * 0.11) * ORBIT_R,
+  );
+
 /**
  * One camera brain for the whole experience (plan §7):
- *  - BOOT: parked outside the seat, gentle drift
- *  - POWERUP: cinematic dolly down into the pilot seat
+ *  - BOOT: exterior beauty pass — slow orbit around the hero ship
+ *  - POWERUP: boarding flight — swing past the bow, dive through the canopy
  *  - AUTO: damped flight to the sector entry pose or the focused POI
  *  - MANUAL: WASD/arrow thrust + drag-look with clamped pitch
  *  - Sector E: turret mode — fixed seat, free aim
@@ -35,6 +46,8 @@ export function CameraDirector() {
   const vel = useRef(new THREE.Vector3());
   const dragging = useRef(false);
   const prevSector = useRef<string | null>(null);
+  /** boarding spline, built once per POWERUP from wherever the orbit was */
+  const boarding = useRef<THREE.CatmullRomCurve3 | null>(null);
 
   const tmp = useMemo(
     () => ({
@@ -118,13 +131,21 @@ export function CameraDirector() {
     // hard cut to the new sector's entry pose while the warp tunnel covers us
     if (prevSector.current !== s.sector) {
       prevSector.current = s.sector;
-      if (s.phase === 'WARP' || s.phase === 'BOOT') {
+      if (s.phase === 'BOOT') {
+        // spawn on the orbit ring, stern-on: engine glow owns the first frame
+        orbitPos(state.clock.elapsedTime, tmp.v1);
+        camera.position.copy(tmp.v1);
+        camera.lookAt(SHIP_FOCUS);
+        vel.current.set(0, 0, 0);
+        syncAngles();
+      } else if (s.phase === 'WARP') {
         camera.position.set(...plan.entry.pos);
         camera.lookAt(...plan.entry.look);
         vel.current.set(0, 0, 0);
         syncAngles();
       }
     }
+    if (s.phase !== 'POWERUP' && boarding.current) boarding.current = null;
 
     // ── FOV: warp punch ──
     let fovTarget = 56;
@@ -145,20 +166,52 @@ export function CameraDirector() {
       (s.phase === 'MISSION' || s.phase === 'BRIDGE');
 
     if (s.phase === 'BOOT') {
-      // drifting establishing shot above the seat
-      tmp.v1.set(0, 3.4 + Math.sin(state.clock.elapsedTime * 0.3) * 0.15, 5.5);
-      easing.damp3(camera.position, tmp.v1, 1.2, dt);
+      // slow beauty orbit around the hull while the title holds
+      orbitPos(state.clock.elapsedTime, tmp.v1);
+      easing.damp3(camera.position, tmp.v1, 1.1, dt);
       tmp.obj.position.copy(camera.position);
-      tmp.obj.lookAt(0, 1.0, -4);
-      easing.dampQ(camera.quaternion, tmp.obj.quaternion, 1.2, dt);
+      tmp.obj.lookAt(SHIP_FOCUS);
+      easing.dampQ(camera.quaternion, tmp.obj.quaternion, 1.1, dt);
     } else if (s.phase === 'POWERUP') {
-      // dolly down into the pilot seat
-      tmp.v1.set(...FLIGHT.BRIDGE.entry.pos);
-      easing.damp3(camera.position, tmp.v1, 0.55, dt);
-      tmp.obj.position.copy(camera.position);
-      tmp.obj.lookAt(...FLIGHT.BRIDGE.entry.look);
-      easing.dampQ(camera.quaternion, tmp.obj.quaternion, 0.55, dt);
-      syncAngles();
+      if (s.reducedMotion) {
+        // quick cut down into the seat
+        tmp.v1.set(...FLIGHT.BRIDGE.entry.pos);
+        easing.damp3(camera.position, tmp.v1, 0.25, dt);
+        tmp.obj.position.copy(camera.position);
+        tmp.obj.lookAt(...FLIGHT.BRIDGE.entry.look);
+        easing.dampQ(camera.quaternion, tmp.obj.quaternion, 0.25, dt);
+        syncAngles();
+      } else {
+        // boarding flight: swing past the bow, skim the spine, drop through
+        // the canopy glass into the seat pose
+        if (!boarding.current) {
+          boarding.current = new THREE.CatmullRomCurve3(
+            [
+              camera.position.clone(),
+              new THREE.Vector3(5.6, 3.5, -11.6),
+              new THREE.Vector3(1.4, 2.6, -5.6),
+              new THREE.Vector3(0, 1.68, -1.95),
+              new THREE.Vector3(...FLIGHT.BRIDGE.entry.pos),
+            ],
+            false,
+            'centripetal',
+          );
+        }
+        const raw = THREE.MathUtils.clamp(
+          (performance.now() - s.powerupStartedAt) / DUR.boot,
+          0,
+          1,
+        );
+        const p = raw * raw * (3 - 2 * raw);
+        boarding.current.getPointAt(p, camera.position);
+        // gaze hands off from the hull to the flight path as we drop in
+        const lookMix = THREE.MathUtils.smoothstep(p, 0.55, 1);
+        tmp.v2.copy(SHIP_FOCUS).lerp(tmp.v1.set(...FLIGHT.BRIDGE.entry.look), lookMix);
+        tmp.obj.position.copy(camera.position);
+        tmp.obj.lookAt(tmp.v2);
+        easing.dampQ(camera.quaternion, tmp.obj.quaternion, 0.12, dt);
+        syncAngles();
+      }
     } else if (manual) {
       // free flight
       camera.quaternion.setFromEuler(tmp.e.set(pitch.current, yaw.current, 0, 'YXZ'));

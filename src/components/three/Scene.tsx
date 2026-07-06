@@ -11,6 +11,7 @@ import { COLORS } from '@/lib/theme';
 import './materials';
 import { Starfield } from './Starfield';
 import { Cockpit } from './Cockpit';
+import { HeroShip } from './HeroShip';
 import { WarpTunnel } from './WarpTunnel';
 import { CameraDirector } from './CameraDirector';
 import { PostFX } from './PostFX';
@@ -76,12 +77,15 @@ export function Scene() {
   const reducedMotion = useApp((s) => s.reducedMotion);
   // full-blackout hyperspace: while the tunnel runs, nothing else renders
   const warping = phase === 'WARP' && !reducedMotion;
+  // title + boarding flight show the ship from outside; the camera-parented
+  // cockpit only appears once the pilot has dropped into the seat
+  const exterior = phase === 'BOOT' || phase === 'POWERUP';
 
   return (
     <>
       <PerspectiveCamera makeDefault fov={56} near={0.1} far={2000} position={[0, 1.2, 0]}>
         {/* cockpit + warp tunnel ride with the camera */}
-        <group visible={phase !== 'BOOT' && !warping}>
+        <group visible={!exterior && !warping}>
           <Cockpit />
         </group>
         <WarpTunnel />
@@ -90,6 +94,11 @@ export function Scene() {
       <Atmosphere />
       <group visible={!warping}>
         <Starfield />
+        {exterior && (
+          <Suspense fallback={null}>
+            <HeroShip />
+          </Suspense>
+        )}
         <Suspense fallback={null}>
           {sector === 'BRIDGE' && <Bridge />}
           {sector === 'A' && <SectorA />}

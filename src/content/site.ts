@@ -1,7 +1,6 @@
 export const SITE = {
   name: 'Ayush Kumar',
-  title: 'PILOT: AYUSH KUMAR',
-  tagline: 'Software engineer · agents, systems & the web',
+  title: 'AYUSH KUMAR',
   description:
     'First-person spaceship portfolio of Ayush Kumar — Junior Engineer at Cornerstone OnDemand, VIT Vellore CSE ’26. Agents, distributed systems, web, and autonomous drones.',
   url: 'https://ayushk08.com',

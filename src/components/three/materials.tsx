@@ -40,10 +40,11 @@ export const HoloMaterial = shaderMaterial(
     float fresnel = pow(1.0 - abs(dot(normalize(vNormal), normalize(vViewDir))), 2.0);
     vec2 d = min(vUv, 1.0 - vUv);
     float edge = 1.0 - smoothstep(0.0, 0.035, min(d.x, d.y));
-    float scan = 0.05 * sin((vUv.y * 180.0) - uTime * 5.0);
-    float blink = 0.96 + 0.04 * sin(uTime * 41.0) * step(0.985, sin(uTime * 0.9) * 0.5 + 0.5);
+    // kept subtle — heavy scan/flicker distorted the card text (readability)
+    float scan = 0.016 * sin((vUv.y * 180.0) - uTime * 5.0);
+    float blink = 0.988 + 0.012 * sin(uTime * 41.0) * step(0.985, sin(uTime * 0.9) * 0.5 + 0.5);
     float alpha = (uFillAlpha + fresnel * 0.30 + edge * 0.85 + scan) * uOpacity * blink;
-    vec3 col = uColor * (0.55 + fresnel * 0.9 + edge * 1.8 + scan * 2.5);
+    vec3 col = uColor * (0.55 + fresnel * 0.9 + edge * 1.8 + scan * 1.0);
     gl_FragColor = vec4(col, clamp(alpha, 0.0, 1.0));
   }`,
 );
@@ -54,8 +55,13 @@ export const NebulaMaterial = shaderMaterial(
     uColorA: new THREE.Color('#00D9F5'),
     uColorB: new THREE.Color('#0E6E7E'),
     uColorC: new THREE.Color('#0A0E17'),
+    // spectral accent hues, blended in by uMulti (title/menu screens crank it)
+    uColorM1: new THREE.Color('#B266FF'),
+    uColorM2: new THREE.Color('#FF7FBF'),
+    uColorM3: new THREE.Color('#FFB347'),
     uTime: 0,
     uIntensity: 1,
+    uMulti: 0,
   },
   /* glsl */ `
   varying vec3 vPos;
@@ -67,8 +73,12 @@ export const NebulaMaterial = shaderMaterial(
   uniform vec3 uColorA;
   uniform vec3 uColorB;
   uniform vec3 uColorC;
+  uniform vec3 uColorM1;
+  uniform vec3 uColorM2;
+  uniform vec3 uColorM3;
   uniform float uTime;
   uniform float uIntensity;
+  uniform float uMulti;
   varying vec3 vPos;
 
   float hash(vec3 p) {
@@ -114,11 +124,24 @@ export const NebulaMaterial = shaderMaterial(
     vec3 bright = min(uColorA * 1.8 + 0.06, vec3(1.0));
     vec3 col = mix(uColorB, uColorA, clamp(n2 * 1.5, 0.0, 1.0));
     col = mix(col, bright, pow(clamp(n2, 0.0, 1.0), 3.0) * 0.65);
+
+    // spectral accents — the domain-warp channels carve independent hue
+    // bands so the gas shifts violet / magenta / amber across the dome
+    float h1 = smoothstep(0.38, 0.72, q.x);
+    float h2 = smoothstep(0.42, 0.78, q.y);
+    float h3 = smoothstep(0.50, 0.85, q.z);
+    vec3 spectral = col;
+    spectral = mix(spectral, uColorM1 * 1.5, h1 * 0.85);
+    spectral = mix(spectral, uColorM2 * 1.35, h2 * 0.7);
+    spectral = mix(spectral, uColorM3 * 1.25, h3 * 0.5);
+    col = mix(col, spectral, uMulti);
+    bright = mix(bright, vec3(1.0), uMulti * 0.45);
+
     col = mix(uColorC, col, neb);
 
     // bright filament ridges threaded through the densest gas
     float fil = smoothstep(0.62, 0.96, n) * neb;
-    col += bright * fil * 0.4;
+    col += bright * fil * (0.4 + uMulti * 0.25);
 
     // keep it a backdrop — low enough alpha that holograms read in front of it
     float alpha = neb * 0.32 + fil * 0.1;
@@ -126,13 +149,15 @@ export const NebulaMaterial = shaderMaterial(
   }`,
 );
 
-// ── Warp tunnel: per-column streaks racing down a cylinder ──
+// ── Warp tunnel: star-line streaks at entry/exit, smooth hyperspace
+//    swirl through the middle of the jump (Star Wars lightspeed) ──
 export const WarpMaterial = shaderMaterial(
   {
     uColorFrom: new THREE.Color('#00D9F5'),
     uColorTo: new THREE.Color('#B266FF'),
     uTime: 0,
-    uProgress: 0,
+    uProgress: 0, // 0→1→0 intensity envelope
+    uRaw: 0, // raw 0→1 jump progress (phases the visuals)
   },
   /* glsl */ `
   varying vec2 vUv;
@@ -145,24 +170,90 @@ export const WarpMaterial = shaderMaterial(
   uniform vec3 uColorTo;
   uniform float uTime;
   uniform float uProgress;
+  uniform float uRaw;
   varying vec2 vUv;
+
+  float hash21(vec2 p) {
+    p = fract(p * vec2(123.34, 456.21));
+    p += dot(p, p + 45.32);
+    return fract(p.x * p.y);
+  }
+  float noise2(vec2 p) {
+    vec2 i = floor(p);
+    vec2 f = fract(p);
+    f = f * f * (3.0 - 2.0 * f);
+    float a = hash21(i);
+    float b = hash21(i + vec2(1.0, 0.0));
+    float c = hash21(i + vec2(0.0, 1.0));
+    float d = hash21(i + vec2(1.0, 1.0));
+    return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
+  }
+  float fbm2(vec2 p) {
+    float v = 0.0;
+    float a = 0.5;
+    for (int i = 0; i < 4; i++) {
+      v += a * noise2(p);
+      p = p * 2.03 + vec2(17.3, 9.1);
+      a *= 0.5;
+    }
+    return v;
+  }
+
   void main() {
-    float cols = 150.0;
-    float colId = floor(vUv.x * cols);
-    float rnd = fract(sin(colId * 91.17) * 43758.55);
-    float rnd2 = fract(sin(colId * 12.9898) * 78.233);
-    // star-lines accelerate as the jump reaches full lightspeed
-    float speed = (2.5 + rnd * 8.0) * (0.5 + uProgress * 1.9);
-    float len = 0.06 + rnd2 * 0.22;
-    float p = fract(vUv.y * (1.0 + rnd * 2.0) - uTime * speed);
-    float streak = smoothstep(0.0, 0.07, p) * smoothstep(0.10 + len, 0.10, p);
-    float within = smoothstep(0.42, 0.0, abs(fract(vUv.x * cols) - 0.5));
-    // hot white leading edge on each streak
-    float head = smoothstep(0.025, 0.0, p) * within;
-    vec3 col = mix(uColorFrom, uColorTo, clamp(uProgress * 1.4 - 0.2, 0.0, 1.0));
-    col = mix(col, vec3(1.0), head * 0.85);
-    float a = (streak * within + head) * uProgress;
-    gl_FragColor = vec4(col * (1.4 + rnd) * a, a);
+    // phase weights: streaked star-lines while entering/exiting, the smooth
+    // swirling tunnel through the cruise portion of the jump. A few streaks
+    // persist through the middle so the crossfade never dips to black.
+    float mid = smoothstep(0.12, 0.30, uRaw) * (1.0 - smoothstep(0.70, 0.88, uRaw));
+    float starsW = 1.0 - mid * 0.8;
+
+    vec3 base = mix(uColorFrom, uColorTo, clamp(uRaw * 1.4 - 0.2, 0.0, 1.0));
+    vec3 col = vec3(0.0);
+    float a = 0.0;
+
+    // ── star-lines: stars stretched into racing streaks ──
+    if (starsW > 0.002) {
+      float cols = 150.0;
+      float colId = floor(vUv.x * cols);
+      float rnd = fract(sin(colId * 91.17) * 43758.55);
+      float rnd2 = fract(sin(colId * 12.9898) * 78.233);
+      float speed = (2.5 + rnd * 8.0) * (0.5 + uProgress * 1.9);
+      float len = 0.06 + rnd2 * 0.22;
+      float p = fract(vUv.y * (1.0 + rnd * 2.0) - uTime * speed);
+      float streak = smoothstep(0.0, 0.07, p) * smoothstep(0.10 + len, 0.10, p);
+      float within = smoothstep(0.42, 0.0, abs(fract(vUv.x * cols) - 0.5));
+      float head = smoothstep(0.025, 0.0, p) * within;
+      float sa = (streak * within + head) * starsW;
+      col += mix(base, vec3(1.0), head * 0.85) * (1.4 + rnd) * sa;
+      a += sa;
+    }
+
+    // ── hyperspace swirl: soft luminous clouds twisting past the canopy ──
+    if (mid > 0.002) {
+      // corkscrew the angular coordinate along the tunnel and race it forward
+      vec2 p = vec2(vUv.x * 4.0 + vUv.y * 1.6, vUv.y * 3.0 - uTime * 2.4);
+      float n = fbm2(p);
+      float n2 = fbm2(p * 1.9 + vec2(n * 2.2, -uTime * 1.1));
+      float bands = fbm2(vec2(vUv.x * 8.0, vUv.y * 1.1 - uTime * 3.6));
+
+      vec3 tcol = mix(base * 0.4, base, n);
+      // mother-of-pearl highlights threaded through the flow
+      tcol = mix(tcol, vec3(1.0), pow(clamp(n2, 0.0, 1.0), 3.2) * 0.7);
+      tcol += base * pow(clamp(bands, 0.0, 1.0), 2.5) * 0.55;
+
+      // white-hot core at the far end of the tunnel (uv.y→0 is dead ahead)
+      float core = pow(1.0 - vUv.y, 4.0);
+      tcol += vec3(0.9, 0.96, 1.0) * core * 1.1;
+
+      // dark lanes between the flow streaks keep the swirl readable
+      float lane = 0.55 + 0.45 * bands;
+      float ta = (0.14 + n * 0.42 + core * 0.9) * lane * mid;
+      col += tcol * ta;
+      a += ta;
+    }
+
+    a *= uProgress;
+    col *= uProgress;
+    gl_FragColor = vec4(col, clamp(a, 0.0, 1.0));
   }`,
 );
 

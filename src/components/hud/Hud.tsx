@@ -1,13 +1,14 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useApp } from '@/state/store';
 import { audio } from '@/systems/audio';
-import { COLORS, MISSION_ORDER, SECTORS, MissionId, SectorId } from '@/lib/theme';
-import { DIAL_NODES, FLIGHT, POI_ORDER } from '@/systems/flightplan';
+import { COLORS, MISSION_ORDER, SECTORS, MissionId } from '@/lib/theme';
+import { POI_ORDER } from '@/systems/flightplan';
 import { PROJECTS } from '@/content/projects';
 import { camTelemetry } from '../three/CameraDirector';
+import { InstrumentCluster } from './instruments';
 import { useDecode } from './useDecode';
 
 /* ────────────────────────── BOOT ────────────────────────── */
@@ -17,8 +18,9 @@ function BootOverlay() {
   const title = useDecode('AYUSH KUMAR', 55);
 
   return (
-    <div className="absolute inset-0 flex flex-col items-center justify-center gap-6 pointer-events-none">
-      <div className="text-center">
+    <div className="absolute inset-0 pointer-events-none">
+      {/* title rides the top of the frame; the cruising hero ship owns the middle */}
+      <div className="absolute left-1/2 -translate-x-1/2 top-[9vh] w-full px-4 text-center">
         <div
           className="font-hero animate-hud-in"
           style={{
@@ -37,18 +39,26 @@ function BootOverlay() {
         >
           FLIGHT SYSTEMS STANDBY · PORTFOLIO CLASS VESSEL
         </div>
+        <div
+          className="font-data animate-hud-in mt-2"
+          style={{ color: COLORS.textMuted, fontSize: '0.6875rem', animationDelay: '900ms' }}
+        >
+          VESSEL AYK-08 CRUISING AT SUBLIGHT — AWAITING MISSION ORDERS
+        </div>
       </div>
 
-      <button
-        onClick={boot}
-        onMouseEnter={() => audio.blip()}
-        className="hud-btn animate-breathe mt-6"
-        style={{ fontSize: '1rem', padding: '14px 42px', borderWidth: 2 }}
-      >
-        [ SELECT MISSION ]
-      </button>
+      <div className="absolute left-1/2 -translate-x-1/2 bottom-[17vh] pointer-events-auto flex flex-col items-center gap-3">
+        <button
+          onClick={boot}
+          onMouseEnter={() => audio.blip()}
+          className="hud-btn animate-breathe"
+          style={{ fontSize: '1rem', padding: '14px 42px', borderWidth: 2 }}
+        >
+          [ SELECT MISSION ]
+        </button>
+      </div>
 
-      <div className="absolute bottom-8 flex flex-col items-center gap-2">
+      <div className="absolute bottom-8 left-1/2 -translate-x-1/2 flex flex-col items-center gap-2 pointer-events-auto">
         <Link
           href="/resume"
           className="hud-interactive font-data"
@@ -150,8 +160,9 @@ function MissionExtras() {
       )}
       {sector === 'E' && (
         <div style={{ color: SECTORS.E.bright }}>
-          SCORE {arenaScore} · BEST {arenaBest} · CLEAR AT 15
+          SCORE {arenaScore} · BEST {arenaBest}
           <div style={{ color: COLORS.textMuted }}>DRAG TO AIM · CLICK / SPACE TO FIRE</div>
+          <div style={{ color: COLORS.textMuted }}>EXIT GAME TO END MISSION</div>
         </div>
       )}
       {navMode === 'MANUAL' && sector !== 'E' && (
@@ -234,81 +245,94 @@ function SubsystemStrip() {
   );
 }
 
-/** radar dots for the mounted sector, normalized to the dish */
-function useRadarPoints(sector: SectorId) {
-  return useMemo(() => {
-    let pts: { id: string; x: number; z: number; color: string }[] = [];
-    if (sector === 'BRIDGE') {
-      pts = DIAL_NODES.map((n) => ({
-        id: n.id,
-        x: n.pos[0],
-        z: n.pos[2],
-        color: SECTORS[n.id].base,
-      }));
-    } else {
-      const plan = FLIGHT[sector];
-      pts = Object.entries(plan.pois).map(([id, pose]) => ({
-        id,
-        x: pose.look[0],
-        z: pose.look[2],
-        color: SECTORS[sector].base,
-      }));
-    }
-    const maxR = Math.max(12, ...pts.map((p) => Math.hypot(p.x, p.z))) * 1.15;
-    return pts.map((p) => ({ ...p, nx: p.x / maxR, nz: p.z / maxR }));
-  }, [sector]);
+/* ─────────────── COMMAND CENTER (bottom-center cluster) ──────────── */
+
+/** rotating galaxy news flashes — keeps the sector feeling inhabited */
+const NEWS_FLASHES = [
+  'HYPERLANE 7 REOPENS AFTER METEOR SWEEP — TRAFFIC NOMINAL',
+  'RECRUITERS SPOTTED SCOUTING THE OUTER RIM FOR FULL-STACK PILOTS',
+  'MUSTAFAR ARENA CHAMPIONSHIP: ROOKIE CLEARS 15 TARGETS OVER THE LAVA FIELDS',
+  'COMMS RELAY UPGRADE COMPLETE — TRANSMISSIONS NOW 12% SHINIER',
+  'DEBRIS FIELD C YIELDS RARE ARTIFACTS — SCANNER CREWS OVERJOYED',
+  'FUEL PRICES DIP ALONG THE CORUSCANT APPROACH — FREIGHTER GUILD CELEBRATES',
+  'OBSERVATION DECK D VOTED BEST VIEW IN THE GALAXY, THIRD YEAR RUNNING',
+  'NAV BEACON DRIFT CORRECTED — AUTOPILOT ACCURACY AT ALL-TIME HIGH',
+];
+
+function NewsMarquee() {
+  // two identical copies scrolling by -50% loop seamlessly
+  const feed = NEWS_FLASHES.join('  ···  ');
+  return (
+    <div
+      className="hud-panel flex items-center gap-2 px-3 py-1"
+      style={{ maxWidth: 'min(640px, 72vw)' }}
+    >
+      <span
+        className="font-hud animate-breathe shrink-0"
+        style={{ color: COLORS.warning, fontSize: '0.5625rem' }}
+      >
+        ▚ GNN LIVE
+      </span>
+      <div style={{ overflow: 'hidden' }}>
+        <div
+          className="marquee-track font-data"
+          style={{ color: COLORS.textSecondary, fontSize: '0.625rem' }}
+        >
+          <span>{feed}&nbsp;&nbsp;···&nbsp;&nbsp;</span>
+          <span aria-hidden="true">{feed}&nbsp;&nbsp;···&nbsp;&nbsp;</span>
+        </div>
+      </div>
+    </div>
+  );
 }
 
-function Radar() {
-  const sector = useApp((s) => s.sector);
-  const focus = useApp((s) => s.focus);
-  const scanned = useApp((s) => s.scanned);
-  const points = useRadarPoints(sector);
-  const R = 62;
-
+/** bottom-center strip — news marquee, plus the instrument cluster in missions */
+function CommandCenter() {
+  const phase = useApp((s) => s.phase);
   return (
-    <div className="hud-corner bottom-4 left-4 md:bottom-6 md:left-6">
-      <svg width={R * 2 + 8} height={R * 2 + 8} style={{ opacity: 0.9 }}>
-        <g transform={`translate(${R + 4},${R + 4})`}>
-          <circle r={R} fill="rgba(14,20,32,0.45)" stroke={COLORS.hudCyanDim} strokeWidth="1" />
-          <circle r={R * 0.62} fill="none" stroke={COLORS.hudCyanDim} strokeWidth="0.5" opacity="0.6" />
-          <circle r={R * 0.28} fill="none" stroke={COLORS.hudCyanDim} strokeWidth="0.5" opacity="0.6" />
-          <line x1={-R} x2={R} y1="0" y2="0" stroke={COLORS.hudCyanDim} strokeWidth="0.5" opacity="0.4" />
-          <line y1={-R} y2={R} x1="0" x2="0" stroke={COLORS.hudCyanDim} strokeWidth="0.5" opacity="0.4" />
-          {/* waypoints (world +x → right, world -z → up) */}
-          {points.map((p) => {
-            const dim = sector === 'C' && scanned.includes(p.id);
-            const active = focus === p.id;
-            return (
-              <circle
-                key={p.id}
-                cx={p.nx * R}
-                cy={p.nz * R}
-                r={active ? 4 : 2.4}
-                fill={p.color}
-                opacity={dim ? 0.35 : 0.95}
-              >
-                {active && (
-                  <animate attributeName="r" values="3;5;3" dur="1.2s" repeatCount="indefinite" />
-                )}
-              </circle>
-            );
-          })}
-          {/* you */}
-          <circle r="2.6" fill={COLORS.hudCyanBright} />
-        </g>
-      </svg>
+    <div className="hud-corner bottom-3 left-1/2 -translate-x-1/2 flex flex-col items-center gap-2">
+      {/* the bridge projects the radar + charts inside the 3D nav dial; once a
+          mission swaps that dial out, surface the same cluster here so the
+          instruments never disappear (arena/comms just show an empty sweep) */}
+      {phase === 'MISSION' && (
+        <div className="pointer-events-none">
+          <InstrumentCluster />
+        </div>
+      )}
+      <NewsMarquee />
     </div>
   );
 }
 
 function ControlCluster() {
   const phase = useApp((s) => s.phase);
+  const sector = useApp((s) => s.sector);
   const returnToBridge = useApp((s) => s.returnToBridge);
+  const exitArena = useApp((s) => s.exitArena);
+  const openShipView = useApp((s) => s.openShipView);
+
+  // mission-selection screen (bridge): offer the walk-around ship inspection
+  if (phase === 'BRIDGE') {
+    return (
+      <div className="hud-corner bottom-4 right-4 md:bottom-6 md:right-6">
+        <button className="hud-btn" onClick={openShipView} onMouseEnter={() => audio.blip()}>
+          ▸ VIEW SPACESHIP
+        </button>
+      </div>
+    );
+  }
+
+  if (phase !== 'MISSION') return null;
 
   return (
     <div className="hud-corner bottom-4 right-4 md:bottom-6 md:right-6 flex flex-col items-end gap-2">
-      {phase === 'MISSION' && (
+      {sector === 'E' ? (
+        // arena runs until the pilot bails out — exiting raises the
+        // MISSION COMPLETE overlay (which owns the return-to-bridge button)
+        <button className="hud-btn" onClick={exitArena} onMouseEnter={() => audio.blip()}>
+          ⏻ EXIT GAME
+        </button>
+      ) : (
         <button className="hud-btn" onClick={returnToBridge} onMouseEnter={() => audio.blip()}>
           ↩ RETURN TO BRIDGE
         </button>
@@ -640,7 +664,12 @@ export function Hud() {
   const inFlight = phase === 'BRIDGE' || phase === 'MISSION';
 
   return (
-    <div className="absolute inset-0 overflow-hidden pointer-events-none select-none">
+    // z-40 keeps HUD chrome (and the mission-complete overlay) above the
+    // in-world <Html> panels, which are capped at zIndexRange [30, 10]
+    <div
+      className="absolute inset-0 overflow-hidden pointer-events-none select-none"
+      style={{ zIndex: 40 }}
+    >
       {/* canopy scanlines over everything */}
       <div className="absolute inset-0 canopy-scanlines" />
 
@@ -659,7 +688,7 @@ export function Hud() {
         <>
           <ObjectiveLog />
           <SubsystemStrip />
-          <Radar />
+          <CommandCenter />
           <ControlCluster />
           <ScrollNavigator />
           <WaypointRail />
@@ -669,9 +698,10 @@ export function Hud() {
         </>
       )}
 
-      {/* the always-available escape hatch (plan §12) — hidden mid-warp */}
+      {/* the always-available escape hatch (plan §12) — hidden mid-warp;
+          bottom-left, since the command center now owns bottom-center */}
       {phase !== 'BOOT' && phase !== 'WARP' && (
-        <div className="absolute bottom-2 left-1/2 -translate-x-1/2">
+        <div className="absolute bottom-3 left-4 md:left-6">
           <Link
             href="/resume"
             className="hud-interactive font-data"

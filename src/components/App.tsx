@@ -1,12 +1,14 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { Component, ReactNode, useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
-import { Canvas } from '@react-three/fiber';
+import { Canvas, RootState } from '@react-three/fiber';
 import { useApp } from '@/state/store';
+import { audio } from '@/systems/audio';
 import { COLORS } from '@/lib/theme';
 import { Scene } from './three/Scene';
 import { Hud } from './hud/Hud';
+import { ShipViewer } from './ShipViewer';
 
 function MobileGate() {
   return (
@@ -54,6 +56,129 @@ function NoWebGL() {
   );
 }
 
+/** brief notice shown while the WebGL context is rebuilt after a GPU reset */
+function RebootNotice() {
+  return (
+    <div className="fixed inset-0 flex items-center justify-center pointer-events-none">
+      <span
+        className="font-data animate-breathe"
+        style={{ color: COLORS.textMuted, fontSize: '0.75rem' }}
+      >
+        REINITIALIZING FLIGHT SYSTEMS…
+      </span>
+    </div>
+  );
+}
+
+/**
+ * Catches the synchronous render crash that follows a lost WebGL context
+ * (three touches the null context → "reading 'alpha'"). It reports up so the
+ * parent can remount the Canvas on a fresh context instead of white-screening.
+ */
+class CanvasErrorBoundary extends Component<
+  { onError: () => void; fallback: ReactNode; children: ReactNode },
+  { failed: boolean }
+> {
+  state = { failed: false };
+  static getDerivedStateFromError() {
+    return { failed: true };
+  }
+  componentDidCatch() {
+    this.props.onError();
+  }
+  render() {
+    return this.state.failed ? this.props.fallback : this.props.children;
+  }
+}
+
+/** drives the ship-ambience audio layer from the flight state machine */
+function AudioDirector() {
+  const phase = useApp((s) => s.phase);
+  const sector = useApp((s) => s.sector);
+  const shipView = useApp((s) => s.shipView);
+  useEffect(() => {
+    // spaceship.mp3 plays on the 3D ship view + every mission except comms
+    const wantShip = shipView || (phase === 'MISSION' && sector !== 'CONTACT');
+    audio.shipAmbience(wantShip);
+  }, [phase, sector, shipView]);
+  return null;
+}
+
+/**
+ * The flight deck: Canvas + HUD, wrapped so a lost GPU context recovers
+ * cleanly. Windows GPUs occasionally reset the WebGL context (TDR); left
+ * unhandled the canvas white-screens and, on the next frame, the post-processing
+ * composer reads the now-null context → "Cannot read properties of null
+ * (reading 'alpha')". That throw is uncaught (it fires inside the rAF render
+ * loop, so a React error boundary can't catch it), so the primary defence is to
+ * halt the loop the instant the context drops, then rebuild the whole Canvas
+ * (fresh renderer + composer) on a bumped key.
+ */
+function Deck() {
+  const quality = useApp((s) => s.quality);
+  const [gen, setGen] = useState(0);
+  const [recovering, setRecovering] = useState(false);
+
+  const recover = useCallback(() => {
+    setRecovering(true);
+    setGen((g) => g + 1);
+    window.setTimeout(() => setRecovering(false), 700);
+  }, []);
+
+  const onCreated = useCallback(
+    (state: RootState) => {
+      const renderer = state.gl;
+
+      // A lost context makes gl.getContextAttributes() return null; the
+      // post-processing composer reads `renderer.getContext().getContextAttributes().alpha`
+      // every frame and throws uncaught ("reading 'alpha'"). loseContext()
+      // dispatches asynchronously, so the loop can render one dead-context frame
+      // before our handler below fires — cache the attributes on the raw context
+      // and never hand back null, killing the throw at its source. Recovery
+      // (remount) still swaps in a fresh context.
+      const rawGl = renderer.getContext() as WebGLRenderingContext;
+      const nativeGetAttrs = rawGl.getContextAttributes?.bind(rawGl);
+      if (nativeGetAttrs) {
+        const cached =
+          nativeGetAttrs() ?? ({ alpha: false, depth: true, stencil: false } as WebGLContextAttributes);
+        rawGl.getContextAttributes = () => nativeGetAttrs() ?? cached;
+      }
+
+      renderer.domElement.addEventListener(
+        'webglcontextlost',
+        (e) => {
+          e.preventDefault(); // keep the loss recoverable
+          // stop R3F's loop synchronously so PostFX can't render another frame
+          // against the dead context before React tears this Canvas down
+          state.setFrameloop('never');
+          recover();
+        },
+        { once: true },
+      );
+    },
+    [recover],
+  );
+
+  return (
+    <div className="deck-cursor fixed inset-0">
+      {/* safety net for a context-loss throw that surfaces during React render */}
+      <CanvasErrorBoundary key={gen} onError={recover} fallback={null}>
+        <Canvas
+          dpr={quality === 'CINEMATIC' ? [1, 2] : [1, 1.5]}
+          gl={{ antialias: false, powerPreference: 'high-performance' }}
+          style={{ background: COLORS.void }}
+          onCreated={onCreated}
+        >
+          <color attach="background" args={[COLORS.void]} />
+          <Scene />
+        </Canvas>
+      </CanvasErrorBoundary>
+      <Hud />
+      {recovering && <RebootNotice />}
+    </div>
+  );
+}
+
 /**
  * Client root: WebGL detection, quality auto-tier, reduced-motion sync,
  * then the Canvas + canopy HUD.
@@ -61,7 +186,7 @@ function NoWebGL() {
 export default function App() {
   const [webgl, setWebgl] = useState<boolean | null>(null);
   const [mobile, setMobile] = useState(false);
-  const quality = useApp((s) => s.quality);
+  const shipView = useApp((s) => s.shipView);
 
   useEffect(() => {
     // phones/tablets skip the flight entirely — the deck is desktop-only
@@ -110,17 +235,12 @@ export default function App() {
   }
   if (!webgl) return <NoWebGL />;
 
+  // the ship view runs its own isolated Canvas — unmount the deck so only one
+  // WebGL context is ever live at a time
   return (
-    <div className="deck-cursor fixed inset-0">
-      <Canvas
-        dpr={quality === 'CINEMATIC' ? [1, 2] : [1, 1.5]}
-        gl={{ antialias: false, powerPreference: 'high-performance' }}
-        style={{ background: COLORS.void }}
-      >
-        <color attach="background" args={[COLORS.void]} />
-        <Scene />
-      </Canvas>
-      <Hud />
-    </div>
+    <>
+      <AudioDirector />
+      {shipView ? <ShipViewer /> : <Deck />}
+    </>
   );
 }

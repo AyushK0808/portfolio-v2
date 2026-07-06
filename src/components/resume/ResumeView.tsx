@@ -258,7 +258,6 @@ function Navbar() {
 /* ─────────────────────────── hero ────────────────────────────── */
 
 function Hero() {
-  const tagline = useDecode(SITE.tagline.toUpperCase(), 28);
   return (
     <section id="home" className="relative flex min-h-[92vh] w-full flex-col justify-center overflow-hidden">
       {/* ReactBits line waves, tinted to the deck palette, faded out at the bottom */}
@@ -302,12 +301,12 @@ function Hero() {
         >
           AYUSH KUMAR
         </h1>
-        <p
+        {/* <p
           className="font-hud animate-hud-in mt-5"
           style={{ color: 'var(--text-secondary)', fontSize: 'clamp(0.8125rem, 2vw, 1rem)', minHeight: '1.5em', animationDelay: '240ms' }}
         >
           {tagline || ' '}
-        </p>
+        </p> */}
         <p className="font-data animate-hud-in mt-2" style={{ color: 'var(--text-muted)', fontSize: '0.8125rem', animationDelay: '320ms' }}>
           {DOSSIER.rank} · {DOSSIER.posting} · {DOSSIER.origin}
         </p>
