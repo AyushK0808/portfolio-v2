@@ -10,6 +10,7 @@ class AudioEngine {
   private ctx: AudioContext | null = null;
   private master: GainNode | null = null;
   private engineNodes: { gain: GainNode; stop: () => void } | null = null;
+  private chargeNodes: { osc: OscillatorNode; filter: BiquadFilterNode; gain: GainNode } | null = null;
   private muted = true;
 
   /** streamed audio assets (background ambience + hyperspace jump) */
@@ -255,6 +256,110 @@ class AudioEngine {
     noise.connect(filter).connect(g).connect(this.master);
     noise.start(t);
     noise.stop(t + 0.25);
+  }
+
+  /**
+   * Dropping out of hyperspace: the roar collapses and a low thump lands as
+   * the destination snaps into place.
+   */
+  dropOut() {
+    if (!this.ready || !this.ctx || !this.master) return;
+    const ctx = this.ctx;
+    const t = ctx.currentTime;
+    const noise = this.noiseSource(0.9);
+    const filter = ctx.createBiquadFilter();
+    filter.type = 'lowpass';
+    filter.frequency.setValueAtTime(5200, t);
+    filter.frequency.exponentialRampToValueAtTime(90, t + 0.7);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.26, t);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.8);
+    noise.connect(filter).connect(g).connect(this.master);
+    noise.start(t);
+    noise.stop(t + 0.85);
+    // the thump
+    const osc = ctx.createOscillator();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(110, t + 0.05);
+    osc.frequency.exponentialRampToValueAtTime(38, t + 0.5);
+    const og = ctx.createGain();
+    og.gain.setValueAtTime(0.0001, t);
+    og.gain.exponentialRampToValueAtTime(0.4, t + 0.07);
+    og.gain.exponentialRampToValueAtTime(0.0001, t + 0.6);
+    osc.connect(og).connect(this.master);
+    osc.start(t);
+    osc.stop(t + 0.65);
+  }
+
+  /** passing through the canopy glass: a quick airy whoosh with a glassy ring */
+  canopy() {
+    if (!this.ready || !this.ctx || !this.master) return;
+    const ctx = this.ctx;
+    const t = ctx.currentTime;
+    const noise = this.noiseSource(0.6);
+    const filter = ctx.createBiquadFilter();
+    filter.type = 'bandpass';
+    filter.Q.value = 0.9;
+    filter.frequency.setValueAtTime(500, t);
+    filter.frequency.exponentialRampToValueAtTime(3200, t + 0.22);
+    filter.frequency.exponentialRampToValueAtTime(300, t + 0.55);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(0.22, t + 0.18);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.55);
+    noise.connect(filter).connect(g).connect(this.master);
+    noise.start(t);
+    noise.stop(t + 0.6);
+    this.tone({ freq: 1760, type: 'sine', dur: 0.5, gain: 0.05, delay: 0.16 });
+    this.tone({ freq: 2637, type: 'sine', dur: 0.4, gain: 0.03, delay: 0.18 });
+  }
+
+  /** the map unfolding: three quick rising ticks */
+  mapOpen() {
+    this.tone({ freq: 523, type: 'triangle', dur: 0.05, gain: 0.1 });
+    this.tone({ freq: 784, type: 'triangle', dur: 0.05, gain: 0.1, delay: 0.05 });
+    this.tone({ freq: 1047, type: 'triangle', dur: 0.09, gain: 0.1, delay: 0.1 });
+  }
+
+  /**
+   * The hyperdrive spooling up while the visitor scrolls past the end of a
+   * rail: a tone that climbs and swells with the charge (0..1). Call every
+   * frame; it starts and stops itself.
+   */
+  chargeLevel(level: number) {
+    if (!this.ready || !this.ctx || !this.master) {
+      this.stopCharge();
+      return;
+    }
+    if (level <= 0.02) {
+      this.stopCharge();
+      return;
+    }
+    const ctx = this.ctx;
+    if (!this.chargeNodes) {
+      const osc = ctx.createOscillator();
+      osc.type = 'sawtooth';
+      const filter = ctx.createBiquadFilter();
+      filter.type = 'lowpass';
+      const gain = ctx.createGain();
+      gain.gain.value = 0;
+      osc.connect(filter).connect(gain).connect(this.master);
+      osc.start();
+      this.chargeNodes = { osc, filter, gain };
+    }
+    const t = ctx.currentTime;
+    const { osc, filter, gain } = this.chargeNodes;
+    osc.frequency.setTargetAtTime(70 + level * 260, t, 0.04);
+    filter.frequency.setTargetAtTime(300 + level * 2400, t, 0.04);
+    gain.gain.setTargetAtTime(0.02 + level * 0.07, t, 0.04);
+  }
+
+  private stopCharge() {
+    if (!this.chargeNodes || !this.ctx) return;
+    const { osc, gain } = this.chargeNodes;
+    this.chargeNodes = null;
+    gain.gain.setTargetAtTime(0, this.ctx.currentTime, 0.05);
+    window.setTimeout(() => osc.stop(), 300);
   }
 
   /** looping low engine hum while seated on the bridge / flying */
