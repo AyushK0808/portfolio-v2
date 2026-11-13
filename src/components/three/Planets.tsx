@@ -5,8 +5,8 @@ import * as THREE from 'three';
 import { useFrame } from '@react-three/fiber';
 
 /**
- * Procedural planet spheres — Coruscant (ecumenopolis circuit-grid) and
- * Mustafar (lava world). Fully shader-generated: resolution-independent detail
+ * Procedural planet spheres — a city world (an ecumenopolis) and
+ * a lava world. Fully shader-generated: resolution-independent detail
  * with fwidth-based anti-aliasing, a world-space sun for the day/night
  * terminator, and HDR emissive cores tuned to the PostFX bloom threshold
  * (~0.82). No scene lights touch these materials, and no fog code is included,
@@ -17,7 +17,7 @@ import { useFrame } from '@react-three/fiber';
 // shared GLSL
 // ---------------------------------------------------------------------------
 
-const NOISE_GLSL = /* glsl */ `
+export const NOISE_GLSL = /* glsl */ `
   vec3 hash3(vec3 p) {
     p = vec3(dot(p, vec3(127.1, 311.7, 74.7)),
              dot(p, vec3(269.5, 183.3, 246.1)),
@@ -105,7 +105,7 @@ const NOISE_GLSL = /* glsl */ `
   }
 `;
 
-const PLANET_VERT = /* glsl */ `
+export const PLANET_VERT = /* glsl */ `
   varying vec3 vObj;
   varying vec3 vWorldNormal;
   varying vec3 vWorldPos;
@@ -119,129 +119,394 @@ const PLANET_VERT = /* glsl */ `
 `;
 
 // ---------------------------------------------------------------------------
-// Coruscant — the ecumenopolis. Night side is a copper circuit-grid of city
-// hubs (concentric rings + radial spokes + arterial links); the day crescent
-// shows duracrete plates under blue-white cloud bands and atmosphere.
+// City world — the ecumenopolis. The whole surface is built over, so the night
+// side is a fabric of light rather than a diagram: megacity basins that glow,
+// a patchwork of districts each lit differently, streets between them, hot
+// downtown cores joined by great avenues, and street-level sparkle on top.
+// Over that sit the grand districts: concentric rings of light with spokes,
+// joined hub to hub by transit lines.
+// The day side is grey-and-tan metal with relief (towers catch the sun,
+// canyons fall dark), thin cirrus, and a deep hazy atmosphere. Clouds over the
+// night side are lit from beneath by the city.
 // ---------------------------------------------------------------------------
 
-const CORUSCANT_FRAG = /* glsl */ `
+/**
+ * The great hubs of Meridian's grand districts: scattered over the whole
+ * globe, each drawn by the shader as concentric rings of light with spokes,
+ * and joined to its neighbours by straight transit lines. Their layout is
+ * fixed (seeded), worked out once here and handed to the shader as uniforms.
+ * (The many small hubs between them are placed by the shader itself.)
+ */
+const CITY_HUBS = 26;
+const CITY_LINKS = 40;
+
+function buildCityGrid(): Record<string, THREE.IUniform> {
+  let seed = 20261113;
+  const rnd = () => {
+    seed = (seed + 0x6d2b79f5) | 0;
+    let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+  // [how many, smallest radius, largest radius] — radii are angles in radians
+  const tiers: [number, number, number][] = [
+    [8, 0.24, 0.33],
+    [18, 0.12, 0.19],
+  ];
+  const centres: THREE.Vector3[] = [];
+  const radii: number[] = [];
+  for (const [count, rMin, rMax] of tiers) {
+    for (let k = 0; k < count; k++) {
+      const r = rMin + rnd() * (rMax - rMin);
+      const c = new THREE.Vector3();
+      // neighbours may interlock a little, never stack
+      for (let attempt = 0; attempt < 400; attempt++) {
+        const y = rnd() * 2 - 1;
+        const a = rnd() * Math.PI * 2;
+        const s = Math.sqrt(1 - y * y);
+        c.set(Math.cos(a) * s, y, Math.sin(a) * s);
+        if (centres.every((o, j) => o.angleTo(c) > 0.82 * (r + radii[j]) + 0.015)) break;
+      }
+      centres.push(c);
+      radii.push(r);
+    }
+  }
+
+  // each hub is joined to its two nearest neighbours
+  const pairs = new Set<string>();
+  centres.forEach((c, i) => {
+    centres
+      .map((o, j) => ({ j, d: o.angleTo(c) }))
+      .filter((o) => o.j !== i)
+      .sort((p, q) => p.d - q.d)
+      .slice(0, 2)
+      .forEach((o) => pairs.add(i < o.j ? `${i}:${o.j}` : `${o.j}:${i}`));
+  });
+  // a line is the great circle through both hubs, kept to the stretch between
+  // them: xyz = that circle's pole, w = cosine of half the stretch
+  const linkN: THREE.Vector4[] = [];
+  const linkM: THREE.Vector3[] = [];
+  for (const key of [...pairs].slice(0, CITY_LINKS)) {
+    const [i, j] = key.split(':').map(Number);
+    const pole = new THREE.Vector3().crossVectors(centres[i], centres[j]).normalize();
+    linkN.push(new THREE.Vector4(pole.x, pole.y, pole.z, Math.cos(centres[i].angleTo(centres[j]) / 2)));
+    linkM.push(new THREE.Vector3().addVectors(centres[i], centres[j]).normalize());
+  }
+  while (linkN.length < CITY_LINKS) {
+    linkN.push(new THREE.Vector4(0, 1, 0, 2)); // w = 2: never drawn
+    linkM.push(new THREE.Vector3(0, 1, 0));
+  }
+
+  return {
+    uHubs: { value: centres.map((c, i) => new THREE.Vector4(c.x, c.y, c.z, radii[i])) },
+    uLinkN: { value: linkN },
+    uLinkM: { value: linkM },
+  };
+}
+
+const CITY_UNIFORMS = buildCityGrid();
+
+const CITY_FRAG = /* glsl */ `
+  #define HUBS ${CITY_HUBS}
+  #define LINKS ${CITY_LINKS}
   uniform vec3 uSunDir;
   uniform float uTime;
+  uniform vec4 uHubs[HUBS];   // xyz = hub direction, w = outer ring radius
+  uniform vec4 uLinkN[LINKS]; // xyz = pole of the line's great circle, w = cos(half its length)
+  uniform vec3 uLinkM[LINKS]; // the line's midpoint
   varying vec3 vObj;
   varying vec3 vWorldNormal;
   varying vec3 vWorldPos;
 
   ${NOISE_GLSL}
 
-  // anti-aliased glowing line: wave is |sin(phase)|-style in [0,1]; fades out
-  // (instead of shimmering) once the stripe frequency exceeds pixel density
-  float glowLine(float wave, float width, float phaseFw) {
-    float line = 1.0 - smoothstep(width, width + max(phaseFw, 0.02) * 1.4, wave);
-    return line * smoothstep(1.7, 0.5, phaseFw);
+  // a glowing line of half-width w around d = 0 that never gets thinner than a
+  // pixel: it widens and dims instead, so distant networks melt into a soft
+  // glow rather than shimmering
+  float softLine(float d, float w, float px) {
+    float ww = max(w, px * 1.25);
+    return exp(-(d * d) / (ww * ww)) * (w / ww);
+  }
+
+  // the same, for the grand rings: these also stop growing past a couple of
+  // pixels, so they stay fine lines when the ship flies in close
+  float ringLine(float d, float w, float px) {
+    float ww = max(min(w, px * 2.1), px * 1.25);
+    return exp(-(d * d) / (ww * ww)) * min(1.0, w / ww);
+  }
+
+  // One district hub, seen from offset e = n - c: an outer ring, a beaded
+  // middle ring, an inner ring round a bright core, spokes between inner and
+  // outer, and on the big ones a fine ring inside the rim and a broken halo
+  // ring outside it. "inside" comes back as how deep in the district we are.
+  float hubRings(vec3 e, vec3 c, float r, float px, out float inside) {
+    float d2 = dot(e, e);
+    float d = sqrt(d2);
+    float sd = fract(sin(dot(c, vec3(12.9898, 78.233, 37.719))) * 43758.5453);
+    float sd2 = fract(sd * 17.31 + 0.37);
+    float big = smoothstep(0.10, 0.22, r);
+    // small hubs are drawn with finer lines
+    float ws = mix(0.55, 1.0, smoothstep(0.03, 0.12, r));
+
+    // angle round the hub, 0..1
+    vec3 t1 = normalize(cross(c, abs(c.y) < 0.9 ? vec3(0.0, 1.0, 0.0) : vec3(1.0, 0.0, 0.0)));
+    vec3 t2 = cross(c, t1);
+    float th = atan(dot(e, t2), dot(e, t1)) / 6.2831853 + 0.5;
+
+    float rIn = r * (0.24 + 0.10 * sd);
+    float rMid = r * (0.56 + 0.14 * sd2);
+
+    float g = ringLine(d - r, 0.0034 * ws, px);
+    g += ringLine(d - rIn, 0.0028 * ws, px) * 0.9;
+    // the middle ring is a string of beads, until they are too small to tell apart
+    float nb = max(floor(rMid * 260.0), 8.0);
+    float beads = smoothstep(0.16, 0.26, abs(fract(th * nb) - 0.5));
+    beads = mix(0.6, 0.25 + 0.75 * beads, smoothstep(2.0, 5.0, 6.2831853 * rMid / (nb * px)));
+    g += ringLine(d - rMid, 0.0022 * ws, px) * beads;
+    g += ringLine(d - r * 0.82, 0.0016, px) * 0.6 * big;
+    // halo ring in three arcs
+    float f = fract(th * 3.0 + sd);
+    g += ringLine(d - r * 1.12, 0.0020, px) * 0.7 * big
+       * smoothstep(0.30, 0.34, f) * (1.0 - smoothstep(0.94, 0.98, f));
+
+    // spokes
+    float ns = floor(mix(4.0, 9.0, sd2) + big * 4.0);
+    float sa = (fract(th * ns + sd) - 0.5) / ns * 6.2831853;
+    g += ringLine(d * sin(sa), 0.0020 * ws, px) * 0.75
+       * smoothstep(rIn * 0.96, rIn * 1.04, d) * (1.0 - smoothstep(r * 0.98, r * 1.02, d));
+
+    // the core
+    float cw = max(r * 0.075, px * 1.6);
+    g += exp(-d2 / (cw * cw)) * (r * 0.075 / cw) * 1.4;
+
+    inside = 1.0 - smoothstep(r * 0.25, r * 1.05, d);
+    return g * (0.8 + 0.2 * sd);
+  }
+
+  // a transit line: the great circle with pole "pole", kept to the stretch
+  // within cos(half-length) = ch of its midpoint "mid"
+  float transit(vec3 n, vec3 pole, vec3 mid, float ch, float px) {
+    float m = dot(n, mid);
+    return ringLine(dot(n, pole), 0.0018, px) * 0.65 * smoothstep(ch, ch + (1.0 - ch) * 0.12, m);
+  }
+
+  // The grand districts, in two tiers. The great hubs have fixed places (the
+  // uniforms) and are joined by long transit lines. Between them the globe is
+  // seeded with small hubs — a jittered grid, so there are always a few in
+  // view however close the ship flies — each joined to its nearest neighbour.
+  float grandRings(vec3 n, float px, out float plaza) {
+    float acc = 0.0;
+    float ins;
+    plaza = 0.0;
+    for (int i = 0; i < HUBS; i++) {
+      vec3 c = uHubs[i].xyz;
+      float r = uHubs[i].w;
+      vec3 e = n - c;
+      float d2 = dot(e, e);
+      if (d2 > r * r * 1.44 || d2 < 1e-10) continue;
+      acc += hubRings(e, c, r, px, ins);
+      plaza = max(plaza, ins);
+    }
+    for (int i = 0; i < LINKS; i++) {
+      if (dot(n, uLinkM[i]) < uLinkN[i].w) continue;
+      acc += transit(n, uLinkN[i].xyz, uLinkM[i], uLinkN[i].w, px);
+    }
+
+    // small hubs: one candidate per grid cell, kept if it sits in the thin
+    // shell at the surface (so the scatter is even over the whole globe)
+    const float F = 5.0;
+    vec3 p = n * F;
+    vec3 ip = floor(p);
+    float n1 = 9.0, n2 = 9.0;
+    vec3 c1 = vec3(0.0), c2 = vec3(0.0);
+    for (int x = -1; x <= 1; x++)
+      for (int y = -1; y <= 1; y++)
+        for (int z = -1; z <= 1; z++) {
+          vec3 cell = ip + vec3(float(x), float(y), float(z));
+          vec3 o = hash3(cell + 91.7);
+          vec3 fp = cell + 0.15 + 0.7 * o;
+          float len = length(fp);
+          if (abs(len - F) > 0.5 || o.x + o.z > 1.25) continue;
+          vec3 c = fp / len;
+          vec3 e = n - c;
+          float d2 = dot(e, e);
+          if (d2 < n1) { n2 = n1; c2 = c1; n1 = d2; c1 = c; }
+          else if (d2 < n2) { n2 = d2; c2 = c; }
+          float r = 0.034 + 0.044 * o.y;
+          if (d2 > r * r * 1.44 || d2 < 1e-10) continue;
+          acc += hubRings(e, c, r, px, ins) * 0.9;
+          plaza = max(plaza, ins * 0.7);
+        }
+    // a line from the nearest small hub to the next nearest
+    float cc = dot(c1, c2);
+    if (n2 < 8.0 && cc > 0.90 && cc < 0.9995) {
+      acc += transit(n, normalize(cross(c1, c2)), normalize(c1 + c2), sqrt(0.5 + 0.5 * cc), px) * 0.8;
+    }
+    return min(acc, 1.6);
   }
 
   void main() {
     vec3 n = normalize(vObj);          // pattern space — rotates with the planet
     vec3 wn = normalize(vWorldNormal); // lighting space — sun stays put
     vec3 viewDir = normalize(cameraPosition - vWorldPos);
+    float R = length(vObj);
 
-    // ---- duracrete crust: continent-scale mega-blocks, plate + micro detail
-    float cont = fbm(n * 2.6);
-    float plate = fbm(n * 14.0);
-    float micro = fbm4(n * 55.0);
-    vec3 crust = mix(vec3(0.030, 0.028, 0.034), vec3(0.080, 0.066, 0.056), cont);
-    crust *= 0.72 + plate * 0.50;
-    crust *= 0.86 + micro * 0.28;
+    // organic warp, so nothing ever runs straight
+    vec3 w = n + 0.045 * sin(n.yzx * 7.0 + vec3(1.7, 4.1, 2.9))
+               + 0.018 * sin(n.zxy * 19.0 + vec3(5.2, 0.3, 3.8));
+    // pattern-space units covered by one pixel
+    float px = length(fwidth(w));
 
-    // ---- city light network ------------------------------------------------
-    // regional density: mega-city clusters vs dimmer industrial zones
-    float density = smoothstep(0.30, 0.72, fbm(n * 2.1 + 13.7));
+    // ---- how built-up: megacity basins with quieter belts between them
+    float sprawl = fbm(w * 2.4 + 13.7);
+    float urban = smoothstep(0.30, 0.66, sprawl);
+    float tone = fbm4(w * 5.0 + 41.2);
 
-    // major hubs
-    float f1, f2, id; vec3 fp;
-    voronoi(n * 5.5, f1, f2, fp, id);
-    float hubR = 0.30 + id * 0.24;
-    float inHub = 1.0 - smoothstep(hubR * 0.5, hubR, f1);
+    // ---- metro cores: the brightest downtowns (cell centres only — no cell walls)
+    float a1, a2, aid; vec3 afp;
+    voronoi(w * 5.0, a1, a2, afp, aid);
+    float pxA = px * 5.0;
+    float downtown = exp(-a1 * a1 * 16.0) * (0.35 + 0.65 * aid);
+    float coreHot = exp(-a1 * a1 * 260.0) * (0.4 + 0.6 * aid);
+    // a few ring boulevards around each core, in broken arcs
+    float ringFreq = 26.0 + aid * 18.0;
+    float ring = softLine(fract(a1 * ringFreq) - 0.5, 0.07, pxA * ringFreq)
+               * exp(-a1 * 6.0) * smoothstep(0.03, 0.10, a1)
+               * smoothstep(0.50, 0.66, gnoise(w * 22.0 + aid * 9.0));
 
-    float ringFreq = 15.0 + id * 11.0;
-    float rings = glowLine(abs(sin(f1 * ringFreq)), 0.20, fwidth(f1 * ringFreq)) * inHub;
-    float core = exp(-f1 * f1 * 240.0) * 2.2;
+    // ---- the web: arterial routes as ridges of warped noise, so they branch
+    // and wander like real roads instead of closing into cells
+    vec3 q = w + 0.06 * (vec3(fbm4(w * 6.0 + 1.3), fbm4(w * 6.0 + 7.1), fbm4(w * 6.0 + 3.7)) - 0.5);
+    // (a route is a contour of smooth noise: a thin wandering line, broken into
+    // stretches by a second field so it never closes into loops)
+    // (dividing by the field's own slope turns "how far from the contour" into
+    // a true distance, so a route keeps one width instead of pooling into blots)
+    float wa = gnoise(q * 9.0);
+    float wb = gnoise(q * 24.0 + 5.0);
+    float web1 = softLine((wa - 0.5) * px / max(fwidth(wa), 1e-5), 0.0016, px)
+               * smoothstep(0.40, 0.56, gnoise(q * 3.1 + 20.0));
+    float web2 = softLine((wb - 0.5) * px / max(fwidth(wb), 1e-5), 0.0010, px)
+               * smoothstep(0.44, 0.60, gnoise(q * 7.3 + 31.0));
 
-    // radial spokes out of each hub
-    vec3 hn = normalize(fp);
-    vec3 t1 = normalize(cross(hn, vec3(0.31, 0.85, 0.42)));
-    vec3 t2 = cross(hn, t1);
-    vec3 dv = n * 5.5 - fp;
-    float ang = atan(dot(dv, t2), dot(dv, t1));
-    float spokeN = floor(5.0 + id * 6.0);
-    float spokes = glowLine(abs(sin(ang * spokeN * 0.5)), 0.10, fwidth(ang * spokeN * 0.5))
-                 * inHub * smoothstep(0.03, 0.09, f1);
+    // ---- neighbourhoods: clumps of light with a long bright tail
+    float clump = fbm(w * 26.0 + 3.0);
+    float hood = pow(smoothstep(0.36, 0.80, clump), 2.8);
 
-    // arterial links along cell boundaries
-    float road = 1.0 - smoothstep(0.005, 0.005 + fwidth(f2 - f1) * 1.6 + 0.004, f2 - f1);
-    road *= smoothstep(1.7, 0.5, fwidth((f2 - f1) * 60.0));
+    // ---- city blocks: a fine mosaic, every block lit and painted differently
+    float b1, b2, bid; vec3 bfp;
+    voronoi(q * 58.0 + 7.0, b1, b2, bfp, bid);
+    float resB = smoothstep(0.55, 0.16, px * 58.0);
+    float blockV = mix(0.5, bid, resB);
+    float blockLum = mix(0.34, bid * bid, resB);
+    // one point of light at the heart of most blocks: the dotted look of a
+    // city seen from orbit
+    float pt = exp(-b1 * b1 * 38.0) * step(0.35, bid) * resB;
 
-    // minor districts: a finer second network
-    float m1, m2, mid; vec3 mfp;
-    voronoi(n * 16.0, m1, m2, mfp, mid);
-    float minor = glowLine(abs(sin(m1 * 34.0)), 0.22, fwidth(m1 * 34.0))
-                * (1.0 - smoothstep(0.10, 0.24, m1));
-    float mcore = exp(-m1 * m1 * 900.0) * 1.5;
-    float mroad = 1.0 - smoothstep(0.006, 0.006 + fwidth(m2 - m1) * 1.6 + 0.005, m2 - m1);
-    mroad *= smoothstep(1.7, 0.5, fwidth((m2 - m1) * 120.0));
+    // ---- street-level sparkle; settles to its average once unresolvable
+    float g1 = gnoise(w * 150.0);
+    float g2 = gnoise(w * 390.0 + 17.0);
+    float res1 = smoothstep(1.2, 0.35, px * 150.0);
+    float s1 = mix(0.10, smoothstep(0.60, 0.88, g1), res1);
+    float s2 = mix(0.08, smoothstep(0.64, 0.92, g2), smoothstep(1.2, 0.35, px * 390.0));
+    float sparkle = s1 * 0.75 + s2 * 0.65;
 
-    // grand arcs: sparse planet-spanning ring systems
-    float g1, g2, gid; vec3 gfp;
-    voronoi(n * 2.2 + 31.0, g1, g2, gfp, gid);
-    float grand = glowLine(abs(sin(g1 * 30.0)), 0.10, fwidth(g1 * 30.0))
-                * (1.0 - smoothstep(0.25, 0.75, g1)) * 0.35;
+    // everything is points and threads of light on a dark ground — nothing
+    // smooth, so the night side never washes out into a glow
+    float fabric = urban * (0.15 + 0.85 * hood)
+                 * (pt * (0.3 + 0.7 * bid) * 1.4 + blockLum * sparkle * 1.6);
+    // too far to resolve the blocks: the neighbourhoods stand in for them
+    fabric += urban * hood * 0.45 * (1.0 - resB);
+    float roads = (0.30 + 0.70 * urban) * (web1 * 0.9 + web2 * 0.5) * (0.5 + 0.9 * s1);
+    float metro = downtown * (sparkle * 1.3 + pt * 0.9) * (0.3 + 0.7 * urban)
+                + coreHot * 1.1 + ring * 0.30 * urban;
 
-    // pinpoint tower lights
-    float speckle = smoothstep(0.86, 0.99, gnoise(n * 260.0)) * (0.3 + 0.7 * density);
+    // ---- the grand districts: concentric rings of light, spokes, transit lines.
+    // Drawn on the unwarped sphere so the circles stay true.
+    float plaza;
+    float grand = grandRings(n, px, plaza);
+    // the city burns a little brighter inside a district
+    fabric *= 1.0 + 0.7 * plaza;
+    float lights = fabric + roads + metro + grand * 0.85;
 
-    float grid = rings * 0.8 + spokes * 0.5 + core * 0.65
-               + (minor * 0.5 + mcore * 0.6 + mroad * 0.25) * 0.7
-               + road * 0.32 + grand * 0.6;
-    grid *= 0.20 + 0.95 * density;
-    // unresolvable-detail floor: distant hubs read as soft urban glow
-    grid += inHub * density * 0.05 + speckle * 0.5;
+    vec3 lightCol = mix(vec3(1.0, 0.50, 0.16), vec3(1.0, 0.80, 0.46), tone);
+    // the odd district burns cool white-blue
+    lightCol = mix(lightCol, vec3(0.62, 0.80, 1.0), smoothstep(0.74, 0.82, gnoise(w * 17.0 + 60.0)) * 0.75);
+    lightCol = mix(lightCol, vec3(1.0, 0.94, 0.80), clamp(coreHot * 1.2 + downtown * 0.3, 0.0, 1.0));
+    // the rings are sodium orange
+    lightCol = mix(lightCol, vec3(1.0, 0.40, 0.10), smoothstep(0.0, 0.22, grand) * 0.92);
 
-    float hueN = fbm4(n * 6.0 + 41.2);
-    vec3 lightCol = mix(vec3(1.0, 0.50, 0.15), vec3(1.0, 0.82, 0.40), hueN);
+    // ---- relief: towers rise at the cores, the arterial routes are canyons
+    float mottle = fbm(w * 9.0 + 2.0);
+    float h = mottle * 0.22 + clump * 0.20 + downtown * 0.30 - web1 * 0.14
+            + blockV * 0.05 + g1 * 0.06 * res1 + plaza * 0.06;
+    vec3 dpx = dFdx(vWorldPos);
+    vec3 dpy = dFdy(vWorldPos);
+    vec3 r1 = cross(dpy, wn);
+    vec3 r2 = cross(wn, dpx);
+    float det = dot(dpx, r1);
+    vec3 bn = normalize(abs(det) * wn - sign(det) * (dFdx(h) * r1 + dFdy(h) * r2) * (R * 0.04));
 
-    // ---- day / night -------------------------------------------------------
+    // ---- the built surface by day: steel and tan, mottled district by district
+    vec3 albedo = mix(vec3(0.30, 0.32, 0.36), vec3(0.36, 0.32, 0.28), smoothstep(0.40, 0.72, tone));
+    albedo *= 0.74 + 0.36 * mottle;
+    albedo *= 0.84 + 0.28 * clump;
+    albedo *= 0.66 + 0.68 * blockV;
+    albedo *= 0.90 + 0.20 * mix(0.5, g1, res1);
+    albedo *= 1.0 - 0.50 * web1 - 0.28 * web2;
+    albedo = mix(albedo, albedo * 1.5, ring * 0.8);
+    // by day the ring boulevards read as paler metal
+    albedo = mix(albedo, albedo * 1.6 + 0.03, clamp(grand, 0.0, 1.0) * 0.7);
+    albedo = mix(albedo, vec3(0.56, 0.57, 0.60), downtown * 0.55);
+    albedo *= 0.70 + 0.30 * urban;
+
+    // ---- light
     float ndl = dot(wn, uSunDir);
     float dayL = clamp(ndl, 0.0, 1.0);
-    float day = smoothstep(-0.05, 0.30, ndl);
-    float night = 1.0 - smoothstep(-0.18, 0.10, ndl);
+    float day = smoothstep(-0.05, 0.28, ndl);
+    float night = 1.0 - smoothstep(-0.14, 0.20, ndl);
+    vec3 sunCol = mix(vec3(1.0, 0.60, 0.36), vec3(1.0, 0.97, 0.92), smoothstep(0.0, 0.22, ndl));
+    // relief shading, with nothing leaking past the terminator
+    float diff = clamp(dot(bn, uSunDir), 0.0, 1.0) * smoothstep(0.0, 0.16, ndl);
+    vec3 col = albedo * (0.010 + diff * sunCol * 1.5);
+    // glass and metal catching the sun
+    vec3 hv = normalize(uSunDir + viewDir);
+    col += sunCol * pow(max(dot(bn, hv), 0.0), 48.0) * (0.25 + 0.75 * s2) * 0.40 * day;
+    // a scatter of window glints across the sunlit city
+    col += sunCol * smoothstep(0.80, 0.96, bid) * resB * dayL * 0.22 * (0.4 + 0.6 * urban);
 
-    vec3 col = crust * (0.030 + dayL * vec3(1.0, 0.96, 0.90) * 1.0);
+    // ---- thin high cirrus, stretched along the latitudes
+    vec3 cp = vec3(n.x * 2.6, n.y * 7.5, n.z * 2.6) + vec3(uTime * 0.003, 0.0, uTime * 0.002);
+    float cl = smoothstep(0.66, 0.90, fbm(cp + (tone - 0.5) * 0.8)) * 0.7;
+    col *= 1.0 - cl * 0.30 * day;
+    col = mix(col, vec3(0.86, 0.88, 0.93) * dayL * sunCol * 1.1, cl);
 
-    // cloud bands + polar haze, carried by sunlight
-    float cl = fbm(n * 4.0 + vec3(0.0, uTime * 0.006, 0.0));
-    cl = smoothstep(0.52, 0.85, cl + 0.32 * smoothstep(0.58, 0.94, abs(n.y)));
-    vec3 cloudCol = vec3(0.72, 0.83, 1.0) * (0.04 + dayL * 0.95);
-    col = mix(col, cloudCol, cl * (0.10 + 0.90 * day));
+    // ---- night: the lights, a faint floor of scattered glow between them,
+    // and cloud lit from beneath where it covers the city
+    vec3 emit = lightCol * (lights * 1.8 + urban * 0.006);
+    vec3 underlit = lightCol * urban * (0.02 + 0.10 * downtown + 0.04 * hood);
+    col += mix(emit, underlit, cl) * night;
+    // the grand rings stay lit round the clock, dimmer against the daylight
+    col += vec3(1.0, 0.40, 0.10) * grand * 0.80 * (1.0 - night) * (1.0 - cl);
 
-    // the grid glows hard at night, faintly through the day haze, never through cloud
-    float glowVis = mix(0.25, 1.0, night) * (1.0 - cl * 0.85);
-    col += lightCol * grid * glowVis * 1.5;
-
-    // atmosphere against the disc: blue where lit, warm city-haze on the dark limb
-    float fres = pow(1.0 - clamp(dot(viewDir, wn), 0.0, 1.0), 4.0);
-    col += vec3(0.30, 0.52, 1.0) * fres * (0.06 + 0.45 * day);
-    col += vec3(1.0, 0.55, 0.22) * fres * night * 0.10;
+    // ---- atmosphere against the disc
+    float fres = pow(1.0 - clamp(dot(viewDir, wn), 0.0, 1.0), 3.4);
+    // daylight haze thickening toward the limb
+    col = mix(col, vec3(0.46, 0.62, 1.0) * (0.20 + 0.85 * dayL), fres * 0.55 * day);
+    // sunset band along the terminator
+    col += vec3(1.0, 0.45, 0.20) * smoothstep(0.26, 0.0, abs(ndl)) * (0.03 + 0.30 * fres);
+    // city light scattered into the haze on the dark limb
+    col += vec3(1.0, 0.60, 0.28) * fres * night * 0.12;
 
     gl_FragColor = vec4(col, 1.0);
   }
 `;
 
 // ---------------------------------------------------------------------------
-// Mustafar — domain-warped molten marbling: broad lava seas, ridged rivers and
+// Lava world — domain-warped molten marbling: broad lava seas, ridged rivers and
 // hairline vein cracks glowing through a near-black basalt crust.
 // ---------------------------------------------------------------------------
 
-const MUSTAFAR_FRAG = /* glsl */ `
+const LAVA_FRAG = /* glsl */ `
   uniform vec3 uSunDir;
   uniform float uTime;
   varying vec3 vObj;
@@ -336,7 +601,7 @@ const ATMO_FRAG = /* glsl */ `
   }
 `;
 
-function Atmosphere({
+export function Atmosphere({
   planetRadius,
   shellScale,
   color,
@@ -378,15 +643,17 @@ function Atmosphere({
   );
 }
 
-interface PlanetProps {
+export interface PlanetProps {
   radius?: number;
   /** world-space direction TOWARD the sun (normalized internally) */
   sunDirection?: [number, number, number];
 }
 
-function usePlanetArgs(
+export function usePlanetArgs(
   fragmentShader: string,
   sunDirection: [number, number, number],
+  /** further uniforms; pass a module-level constant so the material is not rebuilt */
+  extraUniforms?: Record<string, THREE.IUniform>,
 ): [[THREE.ShaderMaterialParameters], THREE.Vector3, RefObject<THREE.ShaderMaterial | null>] {
   const matRef = useRef<THREE.ShaderMaterial>(null);
   const sun = useMemo(
@@ -403,10 +670,11 @@ function usePlanetArgs(
           uniforms: {
             uSunDir: { value: sun },
             uTime: { value: 0 },
+            ...extraUniforms,
           },
         },
       ] as [THREE.ShaderMaterialParameters],
-    [fragmentShader, sun],
+    [fragmentShader, sun, extraUniforms],
   );
   useFrame((state) => {
     if (matRef.current) matRef.current.uniforms.uTime.value = state.clock.elapsedTime;
@@ -414,9 +682,9 @@ function usePlanetArgs(
   return [args, sun, matRef];
 }
 
-/** city-planet: circuit-grid night side, blue day crescent, blue atmosphere */
-export function CoruscantPlanet({ radius = 48, sunDirection = [-0.8, 0.3, 0.25] }: PlanetProps) {
-  const [args, sun, matRef] = usePlanetArgs(CORUSCANT_FRAG, sunDirection);
+/** city-planet: a fabric of city light on the night side, relief-lit metal by day, deep haze */
+export function CityPlanet({ radius = 48, sunDirection = [-0.8, 0.3, 0.25] }: PlanetProps) {
+  const [args, sun, matRef] = usePlanetArgs(CITY_FRAG, sunDirection, CITY_UNIFORMS);
   return (
     <group>
       <mesh>
@@ -435,8 +703,8 @@ export function CoruscantPlanet({ radius = 48, sunDirection = [-0.8, 0.3, 0.25] 
 }
 
 /** lava world: molten marbling under a black basalt crust, ember halo */
-export function MustafarPlanet({ radius = 75, sunDirection = [0.35, 0.6, 0.55] }: PlanetProps) {
-  const [args, sun, matRef] = usePlanetArgs(MUSTAFAR_FRAG, sunDirection);
+export function LavaPlanet({ radius = 75, sunDirection = [0.35, 0.6, 0.55] }: PlanetProps) {
+  const [args, sun, matRef] = usePlanetArgs(LAVA_FRAG, sunDirection);
   return (
     <group>
       <mesh>
