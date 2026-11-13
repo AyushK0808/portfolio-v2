@@ -3,9 +3,11 @@
 import { Suspense, lazy, useEffect, useRef } from 'react';
 import * as THREE from 'three';
 import { useFrame, useThree } from '@react-three/fiber';
-import { PerspectiveCamera } from '@react-three/drei';
-import { useApp, useSectorTheme } from '@/state/store';
+import { Environment, Lightformer, PerformanceMonitor, PerspectiveCamera } from '@react-three/drei';
+import { useApp, useLocationTheme } from '@/state/store';
 import { COLORS } from '@/lib/theme';
+import { cruiseEndMs, jumpOutMs } from '@/systems/jump';
+import { loaderAssetsIn, loaderRemainingMs } from '@/systems/loader';
 // bare import so the extend() call always executes — the named imports in
 // other files are type-only and get elided by the compiler
 import './materials';
@@ -13,21 +15,23 @@ import { Starfield } from './Starfield';
 import { Cockpit } from './Cockpit';
 import { HeroShip } from './HeroShip';
 import { WarpTunnel } from './WarpTunnel';
-import { CameraDirector } from './CameraDirector';
+import { StarStreaks } from './StarStreaks';
+import { CameraDirector, camTelemetry } from './CameraDirector';
 import { PostFX } from './PostFX';
-import { SectorPlaceholder, SectorReadyBeacon } from './SectorPlaceholder';
+import { LocationPlaceholder, LocationReadyBeacon } from './LocationPlaceholder';
 
-const Bridge = lazy(() => import('./sectors/Bridge'));
-const SectorA = lazy(() => import('./sectors/SectorA'));
-const SectorB = lazy(() => import('./sectors/SectorB'));
-const SectorC = lazy(() => import('./sectors/SectorC'));
-const SectorD = lazy(() => import('./sectors/SectorD'));
-const SectorE = lazy(() => import('./sectors/SectorE'));
-const SectorContact = lazy(() => import('./sectors/SectorContact'));
+const Hub = lazy(() => import('./locations/Hub'));
+const About = lazy(() => import('./locations/About'));
+const Skills = lazy(() => import('./locations/Skills'));
+const Experience = lazy(() => import('./locations/Experience'));
+const Projects = lazy(() => import('./locations/Projects'));
+const Achievements = lazy(() => import('./locations/Achievements'));
+const Arena = lazy(() => import('./locations/Arena'));
+const Comms = lazy(() => import('./locations/Comms'));
 
-/** exp2 fog + the 3-light global rig, crossfaded to the sector palette */
+/** exp2 fog + the 3-light global rig, crossfaded to the location palette */
 function Atmosphere() {
-  const theme = useSectorTheme();
+  const theme = useLocationTheme();
   const scene = useThree((s) => s.scene);
   const fogRef = useRef<THREE.FogExp2 | null>(null);
   const key = useRef<THREE.DirectionalLight>(null);
@@ -47,7 +51,7 @@ function Atmosphere() {
     };
   }, [scene]);
 
-  // fog = sector deep tinted toward space, never pure black (bible §2)
+  // fog = location deep tinted toward space, never pure black
   targets.current.fog.set(theme.deep).lerp(new THREE.Color(COLORS.spaceDeep), 0.82);
   targets.current.key.set(theme.base);
   targets.current.rim.set(theme.bright);
@@ -73,73 +77,147 @@ function Atmosphere() {
 }
 
 /**
- * Ends a warp only once the destination sector has actually loaded. The tunnel
- * therefore doubles as the loading screen for every jump: it keeps streaking
- * past the minimum clip length until <SectorReadyBeacon> reports the incoming
- * sector's component + assets are in, with a hard safety cap so a stalled or
- * failed asset can never trap the pilot in hyperspace (we drop out and the
- * SectorPlaceholder covers the remainder).
+ * Image-based lighting, generated in code (no downloaded HDRIs): a dark sky
+ * with a warm key panel, a cool fill and a strip in the location's colour.
+ * This is what metal hulls and the cockpit reflect — without it every
+ * metallic surface renders near-black. Rebuilt once per location.
  */
-const WARP_MAX_HOLD = 6000;
+function SpaceEnvironment() {
+  const theme = useLocationTheme();
+  return (
+    <Environment key={theme.id} resolution={256} frames={1} environmentIntensity={0.85}>
+      <color attach="background" args={['#05070c']} />
+      {/* the local sun: small, hot, high off the port side */}
+      <Lightformer form="circle" intensity={14} color="#fff3df" position={[-7, 6, 3]} scale={3.2} target={[0, 0, 0]} />
+      {/* broad cool sky fill from behind */}
+      <Lightformer form="rect" intensity={1.1} color="#9fb6ff" position={[0, 3, 9]} scale={[22, 9, 1]} target={[0, 0, 0]} />
+      {/* the location's own glow, low off the starboard bow */}
+      <Lightformer form="rect" intensity={2.4} color={theme.base} position={[8, -1, -6]} scale={[9, 5, 1]} target={[0, 0, 0]} />
+      <Lightformer form="ring" intensity={1.6} color={theme.bright} position={[0, -7, 0]} scale={9} target={[0, 0, 0]} />
+    </Environment>
+  );
+}
 
-function WarpController() {
+/**
+ * Runs a jump to its end. The tunnel doubles as the loading screen for every
+ * jump: the cruise beat holds until <LocationReadyBeacon> reports the incoming
+ * location's component + assets are in, with a hard safety cap so a stalled or
+ * failed asset can never trap the pilot in hyperspace (we drop out and the
+ * LocationPlaceholder covers the remainder).
+ */
+const JUMP_MAX_HOLD = 6000;
+const DEEP_LINK_MAX_HOLD = 15000;
+
+function JumpController() {
   useFrame(() => {
     const s = useApp.getState();
-    if (s.phase !== 'WARP' || !s.warpTarget) return;
-    const elapsed = performance.now() - s.warpStartedAt;
-    const minDone = elapsed >= s.warpDuration;
-    const capped = elapsed >= s.warpDuration + WARP_MAX_HOLD;
-    if (capped || (minDone && s.sectorReady)) s.arriveSector();
+    const j = s.jump;
+    if (s.phase !== 'JUMP' || !j) return;
+    const now = performance.now();
+    const elapsed = now - j.startedAt;
+
+    // deep-link entry: wait in the tunnel until the destination has loaded
+    if (j.hold) {
+      // the same minimum as the normal loader, so the tunnel is always seen
+      const ready = s.locationReady && loaderRemainingMs(s.reducedMotion) === 0;
+      if (ready || elapsed >= DEEP_LINK_MAX_HOLD) {
+        loaderAssetsIn();
+        s.releaseHold();
+      } else if (s.locationReady) {
+        loaderAssetsIn();
+      }
+      return;
+    }
+    // belt and braces for the store's swap timer (background tabs throttle timers)
+    if (elapsed >= j.duration * 0.5 && s.location !== j.to) s.swapLocation();
+
+    if (j.exitStartedAt === null) {
+      const ready = s.locationReady && s.location === j.to;
+      const due = elapsed >= (j.instant ? j.duration : cruiseEndMs(j));
+      if ((due && ready) || elapsed >= j.duration + JUMP_MAX_HOLD) s.beginExit();
+    } else if (now - j.exitStartedAt >= jumpOutMs(j)) {
+      s.arrive();
+    }
   });
   return null;
 }
 
 export function Scene() {
-  const sector = useApp((s) => s.sector);
+  const location = useApp((s) => s.location);
   const phase = useApp((s) => s.phase);
-  const reducedMotion = useApp((s) => s.reducedMotion);
-  // full-blackout hyperspace: while the tunnel runs, nothing else renders
-  const warping = phase === 'WARP' && !reducedMotion;
-  // title + boarding flight show the ship from outside; the camera-parented
-  // cockpit only appears once the pilot has dropped into the seat
-  const exterior = phase === 'BOOT' || phase === 'POWERUP';
+  // title + boarding show the ship from outside
+  const exterior = phase === 'INTRO' || phase === 'BOARDING';
+
+  const world = useRef<THREE.Group>(null);
+  const cockpit = useRef<THREE.Group>(null);
+  const hero = useRef<THREE.Group>(null);
+
+  // console handle for debugging / e2e inspection (pairs with window.__app)
+  const scene = useThree((st) => st.scene);
+  useEffect(() => {
+    (window as unknown as { __scene?: THREE.Scene }).__scene = scene;
+  }, [scene]);
+
+  // what is drawn changes mid-shot (inside the tunnel, at the canopy pass), so
+  // it is driven per frame from the camera's telemetry rather than React state
+  useFrame(() => {
+    if (world.current) world.current.visible = camTelemetry.worldVisible;
+    if (cockpit.current) cockpit.current.visible = camTelemetry.inCockpit;
+    if (hero.current) hero.current.visible = !camTelemetry.inCockpit;
+  });
 
   return (
     <>
-      <PerspectiveCamera makeDefault fov={56} near={0.1} far={2000} position={[0, 1.2, 0]}>
-        {/* cockpit + warp tunnel ride with the camera */}
-        <group visible={!exterior && !warping}>
-          <Cockpit />
+      <PerspectiveCamera makeDefault fov={56} near={0.05} far={2000} position={[0, 1.2, 0]}>
+        {/* the cockpit and the hyperspace layers ride with the camera */}
+        <group ref={cockpit} visible={false}>
+          <Suspense fallback={null}>
+            <Cockpit />
+          </Suspense>
         </group>
+        <StarStreaks />
         <WarpTunnel />
       </PerspectiveCamera>
       <CameraDirector />
       <Atmosphere />
-      <group visible={!warping}>
+      <SpaceEnvironment />
+      <group ref={world}>
         <Starfield />
         {exterior && (
-          <Suspense fallback={null}>
-            <HeroShip />
-          </Suspense>
+          <group ref={hero}>
+            <Suspense fallback={null}>
+              <HeroShip />
+            </Suspense>
+          </group>
         )}
-        {/* Incoming sector streams in behind a holographic placeholder; keyed by
-            sector so switching fully remounts and the readiness beacon re-arms.
-            The beacon only commits once this boundary resolves — WarpController
-            waits on it so lightspeed holds until the sector is actually loaded. */}
-        <Suspense fallback={<SectorPlaceholder />}>
-          <group key={sector}>
-            {sector === 'BRIDGE' && <Bridge />}
-            {sector === 'A' && <SectorA />}
-            {sector === 'B' && <SectorB />}
-            {sector === 'C' && <SectorC />}
-            {sector === 'D' && <SectorD />}
-            {sector === 'E' && <SectorE />}
-            {sector === 'CONTACT' && <SectorContact />}
-            <SectorReadyBeacon />
+        {/* The incoming location streams in behind a holographic placeholder;
+            keyed by location so switching fully remounts and the readiness
+            beacon re-arms. The beacon only commits once this boundary resolves —
+            JumpController waits on it so lightspeed holds until it has loaded. */}
+        <Suspense fallback={<LocationPlaceholder />}>
+          <group key={location}>
+            {location === 'HUB' && <Hub />}
+            {location === 'ABOUT' && <About />}
+            {location === 'SKILLS' && <Skills />}
+            {location === 'EXPERIENCE' && <Experience />}
+            {location === 'PROJECTS' && <Projects />}
+            {location === 'ACHIEVEMENTS' && <Achievements />}
+            {location === 'ARENA' && <Arena />}
+            {location === 'COMMS' && <Comms />}
+            <LocationReadyBeacon />
           </group>
         </Suspense>
       </group>
-      <WarpController />
+      <JumpController />
+      {/* watches the frame rate; a sustained dip in steady flight drops one graphics tier */}
+      <PerformanceMonitor
+        ms={300}
+        iterations={10}
+        threshold={0.8}
+        bounds={() => [36, 400]}
+        flipflops={Infinity}
+        onDecline={() => useApp.getState().stepQualityDown()}
+      />
       <PostFX />
     </>
   );
