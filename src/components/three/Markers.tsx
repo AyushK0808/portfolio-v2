@@ -3,23 +3,22 @@
 import { useRef } from 'react';
 import * as THREE from 'three';
 import { useFrame } from '@react-three/fiber';
-import { Text } from '@react-three/drei';
+import { Billboard, Text } from '@react-three/drei';
 import { useApp } from '@/state/store';
+import { Interactable } from './Interactable';
 import { FONT_HUD } from './materials';
 
 /**
- * Pulsing waypoint diamond + label. The click affordance for every POI.
+ * Pulsing waypoint diamond + label.
  */
 export function HoloMarker({
   color,
   label,
   active = false,
-  scanned = false,
 }: {
   color: string;
   label: string;
   active?: boolean;
-  scanned?: boolean;
 }) {
   const mesh = useRef<THREE.Mesh>(null);
   const reducedMotion = useApp((s) => s.reducedMotion);
@@ -41,10 +40,10 @@ export function HoloMarker({
         <meshStandardMaterial
           color="#000000"
           emissive={color}
-          emissiveIntensity={scanned ? 0.5 : 2.2}
+          emissiveIntensity={active ? 2.6 : 1.4}
           toneMapped={false}
           transparent
-          opacity={scanned ? 0.55 : 0.95}
+          opacity={0.95}
         />
       </mesh>
       <Text
@@ -55,9 +54,7 @@ export function HoloMarker({
         anchorX="center"
         anchorY="bottom"
         position={[0, 0.3, 0]}
-        fillOpacity={scanned ? 0.5 : 0.95}
-        // front side only — otherwise far-side markers read as mirrored text
-        material-side={THREE.FrontSide}
+        fillOpacity={active ? 1 : 0.8}
       >
         {label.toUpperCase()}
       </Text>
@@ -65,7 +62,36 @@ export function HoloMarker({
   );
 }
 
-/** yaw so a panel at `pos` faces the camera park position `toward` */
+/**
+ * The in-world label for one stop on a location's rail. Always turns to face
+ * the ship (the rail approaches each stop from several angles), and clicking it
+ * glides the ship to that stop.
+ */
+export function StopMarker({
+  index,
+  id,
+  label,
+  color,
+  position,
+}: {
+  index: number;
+  id: string;
+  label: string;
+  color: string;
+  position?: [number, number, number];
+}) {
+  const goToStop = useApp((s) => s.goToStop);
+  const active = useApp((s) => s.stop === index && s.phase === 'FLIGHT');
+  return (
+    <Billboard position={position}>
+      <Interactable id={`stop-${id}`} onSelect={() => goToStop(index)}>
+        <HoloMarker color={color} label={label} active={active} />
+      </Interactable>
+    </Billboard>
+  );
+}
+
+/** yaw so an object at `pos` faces the camera park position `toward` */
 export function faceYaw(pos: [number, number, number], toward: [number, number, number]): [number, number, number] {
   return [0, Math.atan2(toward[0] - pos[0], toward[2] - pos[2]), 0];
 }

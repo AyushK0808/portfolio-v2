@@ -26,8 +26,8 @@ function WarpAberration() {
   useFrame(() => {
     const env = camTelemetry.warpEnv;
     // near-zero at rest — the idle fringe blurred card text; warp still ramps hard
-    effect.offset.x = 0.00025 + 0.0038 * env;
-    effect.offset.y = 0.0003 + 0.0047 * env;
+    effect.offset.x = 0.00025 + 0.0014 * env;
+    effect.offset.y = 0.0003 + 0.0017 * env;
   });
 
   return <primitive object={effect} />;
@@ -39,6 +39,9 @@ function WarpAberration() {
  */
 export function PostFX() {
   const quality = useApp((s) => s.quality);
+
+  // lowest tier: no post-processing pass at all
+  if (quality === 'LITE') return null;
 
   if (quality === 'PERFORMANCE') {
     return (

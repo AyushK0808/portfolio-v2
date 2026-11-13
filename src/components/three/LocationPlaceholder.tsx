@@ -4,21 +4,21 @@ import { useEffect, useRef } from 'react';
 import * as THREE from 'three';
 import { useFrame } from '@react-three/fiber';
 import { Billboard, Text } from '@react-three/drei';
-import { useApp, useSectorTheme } from '@/state/store';
+import { useApp, useLocationTheme } from '@/state/store';
 import { COLORS } from '@/lib/theme';
 import { FONT_HUD } from './materials';
 
 /**
- * Holographic stand-in shown by <Suspense> while an incoming sector's component
- * and 3D assets stream in. A slowly spinning wireframe reticle in the sector's
- * palette plus a MATERIALIZING readout, so dropping out of lightspeed never
- * lands the pilot in an empty void — the real set-dressing fades in over it.
+ * Holographic stand-in shown by <Suspense> while an incoming location's
+ * component and 3D assets stream in. A slowly spinning wireframe reticle in the
+ * location's palette plus a readout, so dropping out of lightspeed never lands
+ * the pilot in an empty void — the real set-dressing fades in over it.
  */
-export function SectorPlaceholder() {
-  const theme = useSectorTheme();
+export function LocationPlaceholder() {
+  const theme = useLocationTheme();
   // the title/boarding phases frame the exterior hero ship — no in-world
-  // "materializing sector" hologram there (the DOM loading screen owns boot)
-  const exterior = useApp((s) => s.phase === 'BOOT' || s.phase === 'POWERUP');
+  // hologram there (the DOM loading screen owns the first load)
+  const exterior = useApp((s) => s.phase === 'INTRO' || s.phase === 'BOARDING');
   const group = useRef<THREE.Group>(null);
   const inner = useRef<THREE.Group>(null);
 
@@ -53,7 +53,7 @@ export function SectorPlaceholder() {
 
       <Billboard position={[0, -3.4, 0]}>
         <Text font={FONT_HUD} fontSize={0.34} color={theme.base} anchorX="center" letterSpacing={0.14}>
-          MATERIALIZING SECTOR
+          {`RESOLVING ${theme.name}`}
         </Text>
         <Text
           font={FONT_HUD}
@@ -73,15 +73,15 @@ export function SectorPlaceholder() {
 }
 
 /**
- * Sibling of the active sector inside its <Suspense> boundary. Because it only
- * commits once the boundary has resolved, its mount is a reliable "this sector's
- * component + assets are loaded" signal — which <WarpController> waits on before
- * dropping the pilot out of lightspeed.
+ * Sibling of the active location inside its <Suspense> boundary. Because it
+ * only commits once the boundary has resolved, its mount is a reliable "this
+ * location's component + assets are loaded" signal — which <JumpController>
+ * waits on before dropping the pilot out of lightspeed.
  */
-export function SectorReadyBeacon() {
-  const setSectorReady = useApp((s) => s.setSectorReady);
+export function LocationReadyBeacon() {
+  const setLocationReady = useApp((s) => s.setLocationReady);
   useEffect(() => {
-    setSectorReady(true);
-  }, [setSectorReady]);
+    setLocationReady(true);
+  }, [setLocationReady]);
   return null;
 }

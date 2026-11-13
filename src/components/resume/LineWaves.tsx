@@ -171,8 +171,16 @@ export default function LineWaves({
   useEffect(() => {
     if (!containerRef.current) return;
     const container = containerRef.current;
-    const renderer = new Renderer({ alpha: true, premultipliedAlpha: false });
+    // this page is where browsers without WebGL are sent, so the animated
+    // background is strictly optional: if a context cannot be created, skip it
+    let renderer: Renderer;
+    try {
+      renderer = new Renderer({ alpha: true, premultipliedAlpha: false });
+    } catch {
+      return;
+    }
     const gl = renderer.gl;
+    if (!gl) return;
     gl.clearColor(0, 0, 0, 0);
     gl.canvas.style.backgroundColor = 'transparent';
 

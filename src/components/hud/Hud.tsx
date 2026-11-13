@@ -1,20 +1,25 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useApp } from '@/state/store';
 import { audio } from '@/systems/audio';
-import { COLORS, MISSION_ORDER, SECTORS, MissionId } from '@/lib/theme';
-import { POI_ORDER } from '@/systems/flightplan';
-import { PROJECTS } from '@/content/projects';
+import { COLORS, LOCATIONS, ROUTE } from '@/lib/theme';
+import { FLIGHT } from '@/systems/flightplan';
+import { scroll } from '@/systems/scroll';
+import { BOARDING_MS } from '@/systems/intro';
 import { camTelemetry } from '../three/CameraDirector';
-import { InstrumentCluster } from './instruments';
 import { useDecode } from './useDecode';
+import { ContentCard } from './ContentCard';
+import { MapOverlay } from './MapOverlay';
+import { CommsPanel } from './CommsPanel';
+import { ArenaHud } from './ArenaHud';
 
-/* ────────────────────────── BOOT ────────────────────────── */
+/* ────────────────────────── INTRO ────────────────────────── */
 
-function BootOverlay() {
-  const boot = useApp((s) => s.boot);
+function IntroOverlay() {
+  const board = useApp((s) => s.board);
+  const skipIntro = useApp((s) => s.skipIntro);
   const title = useDecode('AYUSH KUMAR', 55);
 
   return (
@@ -22,73 +27,82 @@ function BootOverlay() {
       {/* title rides the top of the frame; the cruising hero ship owns the middle */}
       <div className="absolute left-1/2 -translate-x-1/2 top-[9vh] w-full px-4 text-center">
         <div
-          className="font-hero animate-hud-in"
+          className="font-hero animate-title-land"
           style={{
-            fontSize: 'clamp(2.75rem, 7vw, 5.5rem)',
+            fontSize: 'clamp(2rem, 7vw, 5.5rem)',
             lineHeight: 0.95,
             color: COLORS.textPrimary,
             textShadow: `0 0 24px ${COLORS.hudCyan}88, 0 0 80px ${COLORS.hudCyan}44`,
             minHeight: '1em',
           }}
         >
-          {title || ' '}
+          {title || ' '}
         </div>
         <div
           className="font-hud animate-hud-in mt-4"
           style={{ color: COLORS.textSecondary, fontSize: '0.8125rem', animationDelay: '600ms' }}
         >
-          FLIGHT SYSTEMS STANDBY · PORTFOLIO CLASS VESSEL
+          JUNIOR ENGINEER · CORNERSTONE ONDEMAND
         </div>
         <div
           className="font-data animate-hud-in mt-2"
           style={{ color: COLORS.textMuted, fontSize: '0.6875rem', animationDelay: '900ms' }}
         >
-          VESSEL AYK-08 CRUISING AT SUBLIGHT — AWAITING MISSION ORDERS
+          VESSEL AYK-08 HOLDING AT WAYPOINT ZERO — READY FOR BOARDING
         </div>
       </div>
 
       <div className="absolute left-1/2 -translate-x-1/2 bottom-[17vh] pointer-events-auto flex flex-col items-center gap-3">
         <button
-          onClick={boot}
+          onClick={() => board(true)}
           onMouseEnter={() => audio.blip()}
           className="hud-btn animate-breathe"
-          style={{ fontSize: '1rem', padding: '14px 42px', borderWidth: 2 }}
+          style={{ fontSize: '1rem', padding: '14px clamp(22px, 6vw, 42px)', borderWidth: 2, whiteSpace: 'nowrap' }}
         >
-          [ SELECT MISSION ]
+          [ BOARD SHIP ]
         </button>
+        <div className="font-data animate-breathe" style={{ color: COLORS.textMuted, fontSize: '0.6875rem' }}>
+          OR SCROLL ↓
+        </div>
       </div>
 
-      <div className="absolute bottom-8 left-1/2 -translate-x-1/2 flex flex-col items-center gap-2 pointer-events-auto">
+      <div className="absolute bottom-7 left-1/2 -translate-x-1/2 flex items-center gap-5 pointer-events-auto whitespace-nowrap">
+        <button
+          onClick={skipIntro}
+          className="hud-interactive font-data"
+          style={{ color: COLORS.textMuted, fontSize: '0.75rem', background: 'none', border: 'none' }}
+        >
+          skip intro →
+        </button>
         <Link
           href="/resume"
           className="hud-interactive font-data"
           style={{ color: COLORS.textMuted, fontSize: '0.75rem' }}
         >
-          skip the flight → view résumé
+          view 2d image →
         </Link>
       </div>
     </div>
   );
 }
 
-/* ──────────────────────── POWER-UP ───────────────────────── */
+/* ──────────────────────── BOARDING ───────────────────────── */
 
 const BOOT_LINES = [
   'SYS: POWER BUS ............ ONLINE',
   'SYS: NAV COMPUTER ......... ONLINE',
   'SYS: COMMS ARRAY .......... ONLINE',
   'SYS: PROPULSION ........... ONLINE',
-  'SYS: HOLOGRAPHIC DIAL ..... ONLINE',
+  'SYS: HYPERDRIVE ........... ONLINE',
   'PILOT RECOGNIZED — WELCOME ABOARD',
 ];
 
-function PowerUpOverlay() {
-  const bridgeReady = useApp((s) => s.bridgeReady);
+function BoardingOverlay() {
+  const skipIntro = useApp((s) => s.skipIntro);
   return (
     <div
-      className="absolute inset-0 flex items-end justify-start p-10 cursor-pointer"
-      onClick={bridgeReady}
-      title="click to skip"
+      className="absolute inset-0 flex items-end justify-between p-6 md:p-10 cursor-pointer"
+      onClick={skipIntro}
     >
       <div className="font-data" style={{ fontSize: '0.8125rem' }}>
         {BOOT_LINES.map((line, i) => (
@@ -96,7 +110,9 @@ function PowerUpOverlay() {
             key={line}
             className="animate-flicker-in"
             style={{
-              animationDelay: `${200 + i * 320}ms`,
+              // systems report in over the back half of the chase, the last
+              // line landing as the pilot settles into the seat
+              animationDelay: `${BOARDING_MS * 0.5 + i * 480}ms`,
               color: i === BOOT_LINES.length - 1 ? COLORS.hudCyanBright : COLORS.success,
               marginBottom: 4,
             }}
@@ -105,419 +121,223 @@ function PowerUpOverlay() {
           </div>
         ))}
       </div>
+      <div className="font-data" style={{ color: COLORS.textMuted, fontSize: '0.6875rem' }}>
+        TAP TO SKIP
+      </div>
     </div>
   );
 }
 
-/* ─────────────────────── MAIN HUD BITS ───────────────────── */
+/* ─────────────────────── FLIGHT HUD BITS ─────────────────── */
 
-function ObjectiveLog() {
-  const sector = useApp((s) => s.sector);
-  const phase = useApp((s) => s.phase);
-  const warpTarget = useApp((s) => s.warpTarget);
-  const hovered = useApp((s) => s.hovered);
-
-  // hovering a dial node previews that mission's briefing
-  const dialHover =
-    hovered?.startsWith('dial-') ? (hovered.slice(5) as MissionId) : null;
-  const shown = phase === 'WARP' && warpTarget ? SECTORS[warpTarget] : dialHover ? SECTORS[dialHover] : SECTORS[sector];
-  const briefing = phase === 'WARP' ? 'ENGAGING WARP DRIVE…' : shown.briefing;
-  const decoded = useDecode(briefing, 12);
+/** top-left: where you are, and what to do here */
+function LocationReadout() {
+  const location = useApp((s) => s.location);
+  const navMode = useApp((s) => s.navMode);
+  const theme = LOCATIONS[location];
+  const decoded = useDecode(theme.briefing, 12);
 
   return (
-    <div className="hud-corner top-4 left-4 md:top-6 md:left-6 max-w-[70vw]">
-      <div className="font-hud" style={{ color: shown.base, fontSize: '0.9rem' }}>
-        {shown.name}
+    <div className="hud-corner top-4 left-4 md:top-6 md:left-6 max-w-[62vw] md:max-w-[46vw]">
+      <div className="font-hud" style={{ color: theme.base, fontSize: '0.9rem' }}>
+        {theme.label}
+        <span style={{ color: COLORS.textMuted }}> — {theme.name}</span>
       </div>
       <div
-        className="font-data mt-1"
+        className={`font-data mt-1 ${location === 'HUB' ? 'hidden md:block' : ''}`}
         style={{ color: COLORS.textSecondary, fontSize: '0.6875rem', minHeight: '1em' }}
       >
         {decoded}
       </div>
-      <MissionExtras />
-      <MissionTally />
-    </div>
-  );
-}
-
-function MissionExtras() {
-  const sector = useApp((s) => s.sector);
-  const phase = useApp((s) => s.phase);
-  const scanned = useApp((s) => s.scanned);
-  const arenaScore = useApp((s) => s.arenaScore);
-  const arenaBest = useApp((s) => s.arenaBest);
-  const arenaGlobalBest = useApp((s) => s.arenaGlobalBest);
-  const navMode = useApp((s) => s.navMode);
-  const focus = useApp((s) => s.focus);
-
-  if (phase !== 'MISSION') return null;
-  return (
-    <div className="font-data mt-2" style={{ fontSize: '0.6875rem', color: COLORS.textMuted }}>
-      {sector === 'C' && (
-        <div style={{ color: SECTORS.C.bright }}>
-          ARTIFACTS SCANNED: {scanned.length}/{PROJECTS.length}
+      {navMode === 'MANUAL' && location !== 'ARENA' && (
+        <div className="font-data mt-2" style={{ fontSize: '0.6875rem', color: COLORS.textMuted }}>
+          FREE FLIGHT — WASD/ARROWS THRUST · R/F LIFT · DRAG TO LOOK
         </div>
       )}
-      {sector === 'E' && (
-        <div style={{ color: SECTORS.E.bright }}>
-          SCORE {arenaScore} · BEST {arenaBest} · ★ GALAXY {Math.max(arenaGlobalBest, arenaScore)}
-          <div style={{ color: COLORS.textMuted }}>DRAG TO AIM · CLICK / SPACE TO FIRE</div>
-          <div style={{ color: COLORS.textMuted }}>EXIT GAME TO END MISSION</div>
-        </div>
-      )}
-      {navMode === 'MANUAL' && sector !== 'E' && (
-        <div>WASD/ARROWS — THRUST · R/F — LIFT · DRAG — LOOK</div>
-      )}
-      {focus && <div>ESC — RELEASE DOCK</div>}
     </div>
   );
 }
 
-/** missions-cleared pips, always visible under the objective log */
-function MissionTally() {
-  const completed = useApp((s) => s.completedMissions);
-  return (
-    <div className="mt-2 flex items-center gap-1.5">
-      <span className="font-data" style={{ fontSize: '0.625rem', color: COLORS.textMuted }}>
-        CLEARED {completed.length}/{MISSION_ORDER.length}
-      </span>
-      {MISSION_ORDER.map((m) => {
-        const done = completed.includes(m);
-        return (
-          <span
-            key={m}
-            title={SECTORS[m].name}
-            style={{
-              width: 7,
-              height: 7,
-              borderRadius: 999,
-              background: done ? SECTORS[m].base : 'transparent',
-              border: `1px solid ${done ? SECTORS[m].base : COLORS.textMuted}`,
-              boxShadow: done ? `0 0 6px ${SECTORS[m].base}AA` : 'none',
-            }}
-          />
-        );
-      })}
-    </div>
-  );
-}
-
-function SubsystemStrip() {
-  const quality = useApp((s) => s.quality);
-  const setQuality = useApp((s) => s.setQuality);
-  const muted = useApp((s) => s.muted);
-  const toggleMute = useApp((s) => s.toggleMute);
-  const navMode = useApp((s) => s.navMode);
-  const setNavMode = useApp((s) => s.setNavMode);
-
-  const item = (label: string, value: string, active: boolean, onClick: () => void) => (
-    <button
-      onClick={() => {
-        audio.click();
-        onClick();
-      }}
-      onMouseEnter={() => audio.blip()}
-      className="hud-interactive font-data text-left"
-      style={{
-        background: 'transparent',
-        border: 'none',
-        cursor: 'pointer',
-        fontSize: '0.6875rem',
-        color: COLORS.textMuted,
-        display: 'block',
-      }}
-    >
-      <span>{label} </span>
-      <span style={{ color: active ? COLORS.success : COLORS.warning }}>{value}</span>
-    </button>
-  );
+/** left edge: one dot per stop on this location's rail; tap to glide there */
+function StopRail() {
+  const location = useApp((s) => s.location);
+  const stop = useApp((s) => s.stop);
+  const goToStop = useApp((s) => s.goToStop);
+  const theme = LOCATIONS[location];
+  const stops = FLIGHT[location].stops;
+  if (stops.length < 2) return null;
 
   return (
-    <div className="hud-corner top-4 right-4 md:top-6 md:right-6 text-right hud-panel px-3 py-2">
-      {item('SHIELDS', quality, quality === 'CINEMATIC', () =>
-        setQuality(quality === 'CINEMATIC' ? 'PERFORMANCE' : 'CINEMATIC'),
-      )}
-      {item('COMMS', muted ? 'MUTED' : 'LIVE', !muted, toggleMute)}
-      {item('NAV', navMode === 'AUTO' ? 'AUTOPILOT' : 'MANUAL', navMode === 'AUTO', () =>
-        setNavMode(navMode === 'AUTO' ? 'MANUAL' : 'AUTO'),
-      )}
-    </div>
-  );
-}
-
-/* ─────────────── COMMAND CENTER (bottom-center cluster) ──────────── */
-
-/** rotating galaxy news flashes — keeps the sector feeling inhabited */
-const NEWS_FLASHES = [
-  'HYPERLANE 7 REOPENS AFTER METEOR SWEEP — TRAFFIC NOMINAL',
-  'RECRUITERS SPOTTED SCOUTING THE OUTER RIM FOR FULL-STACK PILOTS',
-  'MUSTAFAR ARENA CHAMPIONSHIP: ROOKIE CLEARS 15 TARGETS OVER THE LAVA FIELDS',
-  'COMMS RELAY UPGRADE COMPLETE — TRANSMISSIONS NOW 12% SHINIER',
-  'DEBRIS FIELD C YIELDS RARE ARTIFACTS — SCANNER CREWS OVERJOYED',
-  'FUEL PRICES DIP ALONG THE CORUSCANT APPROACH — FREIGHTER GUILD CELEBRATES',
-  'OBSERVATION DECK D VOTED BEST VIEW IN THE GALAXY, THIRD YEAR RUNNING',
-  'NAV BEACON DRIFT CORRECTED — AUTOPILOT ACCURACY AT ALL-TIME HIGH',
-];
-
-function NewsMarquee() {
-  // two identical copies scrolling by -50% loop seamlessly
-  const feed = NEWS_FLASHES.join('  ···  ');
-  return (
-    <div
-      className="hud-panel flex items-center gap-2 px-3 py-1"
-      style={{ maxWidth: 'min(640px, 72vw)' }}
-    >
-      <span
-        className="font-hud animate-breathe shrink-0"
-        style={{ color: COLORS.warning, fontSize: '0.5625rem' }}
-      >
-        ▚ GNN LIVE
-      </span>
-      <div style={{ overflow: 'hidden' }}>
-        <div
-          className="marquee-track font-data"
-          style={{ color: COLORS.textSecondary, fontSize: '0.625rem' }}
+    <div className="hud-corner left-1 md:left-4 top-1/2 -translate-y-1/2 flex flex-col items-center">
+      <div className="font-data mb-1" style={{ fontSize: '0.625rem', color: COLORS.textMuted }}>
+        {stop + 1}/{stops.length}
+      </div>
+      {stops.map((st, i) => (
+        <button
+          key={st.id}
+          onClick={() => goToStop(i)}
+          onMouseEnter={() => audio.blip()}
+          className="hud-interactive stop-dot"
+          title={st.label}
+          aria-label={`Go to ${st.label}`}
+          aria-current={i === stop}
         >
-          <span>{feed}&nbsp;&nbsp;···&nbsp;&nbsp;</span>
-          <span aria-hidden="true">{feed}&nbsp;&nbsp;···&nbsp;&nbsp;</span>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-/** bottom-center strip — news marquee, plus the instrument cluster in missions */
-function CommandCenter() {
-  const phase = useApp((s) => s.phase);
-  return (
-    <div className="hud-corner bottom-3 left-1/2 -translate-x-1/2 flex flex-col items-center gap-2">
-      {/* the bridge projects the radar + charts inside the 3D nav dial; once a
-          mission swaps that dial out, surface the same cluster here so the
-          instruments never disappear (arena/comms just show an empty sweep) */}
-      {phase === 'MISSION' && (
-        <div className="pointer-events-none">
-          <InstrumentCluster />
-        </div>
-      )}
-      <NewsMarquee />
-    </div>
-  );
-}
-
-function ControlCluster() {
-  const phase = useApp((s) => s.phase);
-  const sector = useApp((s) => s.sector);
-  const returnToBridge = useApp((s) => s.returnToBridge);
-  const exitArena = useApp((s) => s.exitArena);
-  const openShipView = useApp((s) => s.openShipView);
-
-  // mission-selection screen (bridge): offer the walk-around ship inspection
-  if (phase === 'BRIDGE') {
-    return (
-      <div className="hud-corner bottom-4 right-4 md:bottom-6 md:right-6">
-        <button className="hud-btn" onClick={openShipView} onMouseEnter={() => audio.blip()}>
-          ▸ VIEW SPACESHIP
-        </button>
-      </div>
-    );
-  }
-
-  if (phase !== 'MISSION') return null;
-
-  return (
-    <div className="hud-corner bottom-4 right-4 md:bottom-6 md:right-6 flex flex-col items-end gap-2">
-      {sector === 'E' ? (
-        // arena runs until the pilot bails out — exiting raises the
-        // MISSION COMPLETE overlay (which owns the return-to-bridge button)
-        <button className="hud-btn" onClick={exitArena} onMouseEnter={() => audio.blip()}>
-          ⏻ EXIT GAME
-        </button>
-      ) : (
-        <button className="hud-btn" onClick={returnToBridge} onMouseEnter={() => audio.blip()}>
-          ↩ RETURN TO BRIDGE
-        </button>
-      )}
-    </div>
-  );
-}
-
-/* ─────────────────── SCROLL FLIGHT CONTROL ───────────────── */
-
-/**
- * Scroll = fly. Wheel / trackpad / touch swipe advances the autopilot
- * through the sector's waypoints; scrolling past the last one completes
- * the mission. Replaces the old PREV/NEXT buttons.
- */
-function ScrollNavigator() {
-  useEffect(() => {
-    let acc = 0;
-    let lockUntil = 0;
-    let touchY: number | null = null;
-
-    // one waypoint hop should feel immediate but let the camera settle before
-    // the next; completing / backing out get a slightly longer beat.
-    const STEP_LOCK = 560;
-    const COMPLETE_LOCK = 1600;
-    const BACK_LOCK = 640;
-    const THRESHOLD = 48;
-
-    const step = (dir: 1 | -1) => {
-      const s = useApp.getState();
-      if (s.phase !== 'MISSION' || s.navMode !== 'AUTO' || s.missionCompleteShown) return;
-      const order = POI_ORDER[s.sector];
-      if (order.length === 0) return;
-      const now = performance.now();
-      if (now < lockUntil) return;
-
-      const idx = s.focus ? order.indexOf(s.focus) : -1;
-      if (dir === 1) {
-        if (idx === order.length - 1) {
-          // scrolled past the final waypoint — mission cleared
-          s.completeMission(s.sector as MissionId, true);
-          lockUntil = now + COMPLETE_LOCK;
-          return;
-        }
-        s.setFocus(order[idx + 1]);
-      } else {
-        if (idx <= 0) {
-          if (s.focus) s.setFocus(null); // back out to the sector overview
-          lockUntil = now + BACK_LOCK;
-          return;
-        }
-        s.setFocus(order[idx - 1]);
-      }
-      lockUntil = now + STEP_LOCK;
-    };
-
-    const onWheel = (e: WheelEvent) => {
-      // during a hop's cooldown, swallow the flick instead of banking it —
-      // otherwise inertial scroll keeps firing steps the moment the lock lifts
-      if (performance.now() < lockUntil) {
-        acc = 0;
-        return;
-      }
-      // normalize line/page deltas (Firefox, some mice) to pixels
-      const unit = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? window.innerHeight : 1;
-      const dy = e.deltaY * unit;
-      if (Math.sign(dy) !== Math.sign(acc)) acc = 0; // direction flip resets
-      acc += dy;
-      if (Math.abs(acc) > THRESHOLD) {
-        step(acc > 0 ? 1 : -1);
-        acc = 0;
-      }
-    };
-    const onTouchStart = (e: TouchEvent) => {
-      touchY = e.touches[0]?.clientY ?? null;
-    };
-    const onTouchEnd = (e: TouchEvent) => {
-      if (touchY === null) return;
-      const dy = touchY - (e.changedTouches[0]?.clientY ?? touchY);
-      if (Math.abs(dy) > 44) step(dy > 0 ? 1 : -1);
-      touchY = null;
-    };
-
-    window.addEventListener('wheel', onWheel, { passive: true });
-    window.addEventListener('touchstart', onTouchStart, { passive: true });
-    window.addEventListener('touchend', onTouchEnd, { passive: true });
-    return () => {
-      window.removeEventListener('wheel', onWheel);
-      window.removeEventListener('touchstart', onTouchStart);
-      window.removeEventListener('touchend', onTouchEnd);
-    };
-  }, []);
-  return null;
-}
-
-/** vertical waypoint rail — shows where the scroll-autopilot is parked */
-function WaypointRail() {
-  const phase = useApp((s) => s.phase);
-  const sector = useApp((s) => s.sector);
-  const focus = useApp((s) => s.focus);
-  const navMode = useApp((s) => s.navMode);
-  const setFocus = useApp((s) => s.setFocus);
-  const theme = SECTORS[sector];
-
-  const order = POI_ORDER[sector];
-  if (phase !== 'MISSION' || order.length === 0 || navMode !== 'AUTO') return null;
-  const idx = focus ? order.indexOf(focus) : -1;
-  const atEnd = idx === order.length - 1;
-
-  return (
-    <div className="hud-corner right-4 md:right-6 top-1/2 -translate-y-1/2 flex flex-col items-center gap-2">
-      <div className="font-data" style={{ fontSize: '0.625rem', color: COLORS.textMuted }}>
-        {idx + 1}/{order.length}
-      </div>
-      <div className="flex flex-col items-center gap-1.5">
-        {order.map((id, i) => (
-          <button
-            key={id}
-            onClick={() => setFocus(id)}
-            onMouseEnter={() => audio.blip()}
-            className="hud-interactive"
-            title={id.toUpperCase()}
+          <span
             style={{
-              width: i === idx ? 10 : 7,
-              height: i === idx ? 10 : 7,
+              width: i === stop ? 11 : 7,
+              height: i === stop ? 11 : 7,
               borderRadius: 999,
-              cursor: 'pointer',
-              background: i <= idx ? theme.base : 'transparent',
-              border: `1px solid ${i <= idx ? theme.base : COLORS.textMuted}`,
-              boxShadow: i === idx ? `0 0 8px ${theme.base}` : 'none',
+              background: i <= stop ? theme.base : 'transparent',
+              border: `1px solid ${i <= stop ? theme.base : COLORS.textMuted}`,
+              boxShadow: i === stop ? `0 0 8px ${theme.base}` : 'none',
               transition: 'all 160ms var(--ease-hud-in)',
             }}
           />
-        ))}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/**
+ * Bottom-centre: what scrolling will do next, and the hyperdrive charge bar
+ * while the visitor keeps scrolling past either end of the rail.
+ */
+function FlightPrompt() {
+  const location = useApp((s) => s.location);
+  const stop = useApp((s) => s.stop);
+  const navMode = useApp((s) => s.navMode);
+  const [charging, setCharging] = useState<-1 | 0 | 1>(0);
+  const bar = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    let raf = 0;
+    let last: -1 | 0 | 1 = 0;
+    const frame = () => {
+      raf = requestAnimationFrame(frame);
+      const dir = scroll.charge > 0.02 ? scroll.chargeDir : 0;
+      if (dir !== last) {
+        last = dir;
+        setCharging(dir);
+      }
+      if (bar.current) bar.current.style.transform = `scaleX(${Math.min(scroll.charge, 1)})`;
+    };
+    raf = requestAnimationFrame(frame);
+    return () => cancelAnimationFrame(raf);
+  }, []);
+
+  const i = ROUTE.indexOf(location);
+  const n = FLIGHT[location].stops.length;
+  if (i < 0 || n === 0 || navMode === 'MANUAL') return null;
+
+  const theme = LOCATIONS[location];
+  const next = i < ROUTE.length - 1 ? LOCATIONS[ROUTE[i + 1]] : null;
+  const prev = i > 0 ? LOCATIONS[ROUTE[i - 1]] : null;
+  const atEnd = stop === n - 1;
+
+  let idle = 'SCROLL ↓';
+  if (location === 'HUB') idle = 'SCROLL ↓ TO ENGAGE HYPERDRIVE';
+  else if (atEnd) idle = next ? `KEEP SCROLLING ↓ JUMP TO ${next.label}` : 'KEEP SCROLLING ↓ FINISH THE ROUTE';
+
+  const chargeLabel =
+    charging === 1
+      ? next
+        ? `HYPERDRIVE CHARGING — ${next.label}`
+        : 'ROUTE COMPLETE — STAND BY'
+      : `REVERSING — BACK TO ${prev?.label ?? ''}`;
+  const accent = charging === 1 ? (next ?? theme).base : (prev ?? theme).base;
+
+  return (
+    <div
+      className="hud-corner bottom-4 left-3 max-w-[calc(100vw-128px)] text-left md:left-1/2 md:max-w-none md:-translate-x-1/2 md:text-center"
+      aria-live="polite"
+    >
+      <div
+        className="font-data animate-breathe md:whitespace-nowrap"
+        style={{
+          fontSize: '0.6875rem',
+          color: charging !== 0 ? accent : atEnd ? theme.bright : COLORS.textMuted,
+        }}
+      >
+        {charging !== 0 ? chargeLabel : idle}
       </div>
       <div
-        className="font-data animate-breathe text-center"
-        style={{ fontSize: '0.625rem', color: atEnd ? theme.bright : COLORS.textMuted }}
+        className="mt-1.5 md:mx-auto"
+        style={{
+          width: 'min(260px, 48vw)',
+          height: 3,
+          borderRadius: 999,
+          background: `${accent}26`,
+          overflow: 'hidden',
+          opacity: charging !== 0 ? 1 : 0,
+          transition: 'opacity 160ms ease',
+        }}
       >
-        {atEnd ? (
-          <>
-            SCROLL ▾<br />
-            COMPLETE
-          </>
-        ) : (
-          'SCROLL ▾'
-        )}
+        <div
+          ref={bar}
+          style={{
+            width: '100%',
+            height: '100%',
+            transformOrigin: charging === -1 ? 'right' : 'left',
+            transform: 'scaleX(0)',
+            background: accent,
+            boxShadow: `0 0 10px ${accent}`,
+          }}
+        />
       </div>
     </div>
   );
 }
 
-/* ─────────────────── MISSION COMPLETE ────────────────────── */
+/** bottom corners: the 2D résumé page on the left, the map on the right */
+function BottomBar() {
+  const openMap = useApp((s) => s.openMap);
+  return (
+    <>
+      <div className="hud-corner bottom-4 left-6 hidden md:block">
+        <Link
+          href="/resume"
+          className="hud-interactive font-data"
+          style={{ color: COLORS.textSecondary, fontSize: '0.6875rem' }}
+        >
+          [ VIEW 2D IMAGE ]
+        </Link>
+      </div>
+      <div className="hud-corner bottom-3 right-3 md:bottom-5 md:right-6">
+        <button
+          className="hud-btn"
+          style={{ fontSize: '0.8125rem', padding: '9px 18px', borderWidth: 2 }}
+          onClick={openMap}
+          onMouseEnter={() => audio.blip()}
+          aria-keyshortcuts="M"
+        >
+          ◈ MAP
+        </button>
+      </div>
+    </>
+  );
+}
 
-function MissionCompleteOverlay() {
-  const shown = useApp((s) => s.missionCompleteShown);
-  const sector = useApp((s) => s.sector);
-  const completed = useApp((s) => s.completedMissions);
-  const dismiss = useApp((s) => s.dismissMissionComplete);
-  const returnToBridge = useApp((s) => s.returnToBridge);
-  const selectMission = useApp((s) => s.selectMission);
-  const title = useDecode(shown ? 'MISSION COMPLETE' : '', 40);
+/* ─────────────────── ROUTE COMPLETE ──────────────────────── */
 
-  if (!shown) return null;
-  const theme = SECTORS[sector];
-  const next = MISSION_ORDER.find((m) => !completed.includes(m));
-  const allClear = completed.length === MISSION_ORDER.length;
-
+function FinaleOverlay() {
+  const finale = useApp((s) => s.finale);
+  const title = useDecode(finale ? 'ROUTE COMPLETE' : '', 40);
+  if (!finale) return null;
+  const theme = LOCATIONS.ACHIEVEMENTS;
   return (
     <div
-      className="pointer-events-auto absolute inset-0 flex items-center justify-center"
-      style={{ background: 'rgba(5,6,10,0.55)', backdropFilter: 'blur(2px)' }}
+      className="absolute inset-0 flex items-center justify-center"
+      style={{ background: 'rgba(5,6,10,0.5)', backdropFilter: 'blur(2px)' }}
     >
-      <div
-        className="hud-panel animate-hud-in flex flex-col items-center gap-4 px-8 py-8 md:px-14 text-center"
-        style={{ borderColor: theme.base, maxWidth: 560 }}
-      >
+      <div className="animate-hud-in px-6 text-center">
         <div className="font-hud" style={{ color: theme.bright, fontSize: '0.75rem' }}>
-          {theme.name} — CLEARED
+          FIVE LOCATIONS FLOWN
         </div>
         <div
-          className="font-hero"
+          className="font-hero mt-3"
           style={{
-            fontSize: 'clamp(1.6rem, 4.5vw, 2.6rem)',
+            fontSize: 'clamp(1.5rem, 5vw, 3rem)',
             color: COLORS.textPrimary,
             textShadow: `0 0 24px ${theme.base}88`,
             minHeight: '1em',
@@ -525,134 +345,40 @@ function MissionCompleteOverlay() {
         >
           {title || ' '}
         </div>
-
-        <div className="flex items-center gap-2">
-          {MISSION_ORDER.map((m) => {
-            const done = completed.includes(m);
-            return (
-              <span
-                key={m}
-                title={SECTORS[m].name}
-                style={{
-                  width: 11,
-                  height: 11,
-                  borderRadius: 999,
-                  background: done ? SECTORS[m].base : 'transparent',
-                  border: `1px solid ${done ? SECTORS[m].base : COLORS.textMuted}`,
-                  boxShadow: done ? `0 0 8px ${SECTORS[m].base}AA` : 'none',
-                }}
-              />
-            );
-          })}
-        </div>
-        <div className="font-data" style={{ fontSize: '0.75rem', color: COLORS.textSecondary }}>
-          MISSIONS CLEARED — {completed.length}/{MISSION_ORDER.length}
-        </div>
-
-        {allClear && (
-          <div className="font-data" style={{ fontSize: '0.75rem', color: COLORS.success }}>
-            ★ FULL DOSSIER UNLOCKED — YOU FLEW EVERY SECTOR. RANK: ACE PILOT.
-          </div>
-        )}
-
-        <div className="mt-2 flex flex-wrap items-center justify-center gap-2">
-          {next && (
-            <button
-              className="hud-btn"
-              style={{ fontSize: '0.8125rem', padding: '8px 18px' }}
-              onClick={() => selectMission(next)}
-              onMouseEnter={() => audio.blip()}
-            >
-              NEXT MISSION: {SECTORS[next].callsign} ▸
-            </button>
-          )}
-          <button
-            className="hud-btn"
-            style={{ fontSize: '0.8125rem', padding: '8px 18px' }}
-            onClick={returnToBridge}
-            onMouseEnter={() => audio.blip()}
-          >
-            ↩ HEAD BACK TO BRIDGE
-          </button>
-          <button
-            className="hud-btn"
-            style={{ fontSize: '0.8125rem', padding: '8px 18px' }}
-            onClick={dismiss}
-            onMouseEnter={() => audio.blip()}
-          >
-            ✕ KEEP EXPLORING
-          </button>
+        <div className="font-data mt-3" style={{ color: COLORS.textSecondary, fontSize: '0.75rem' }}>
+          OPENING THE MAP — THE GAME AND CONTACT ARE STILL OUT THERE
         </div>
       </div>
     </div>
   );
 }
 
-function Reticle() {
-  const hovered = useApp((s) => s.hovered);
-  const sector = useApp((s) => s.sector);
-  const phase = useApp((s) => s.phase);
-  const armed = hovered !== null;
-  const combat = sector === 'E' && phase === 'MISSION';
-  const color = combat ? SECTORS.E.bright : armed ? COLORS.hudCyanBright : COLORS.hudCyan;
-
-  return (
-    <div
-      className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none"
-      style={{
-        width: armed || combat ? 34 : 26,
-        height: armed || combat ? 34 : 26,
-        transition: 'all 120ms cubic-bezier(0.16,1,0.3,1)',
-        opacity: armed || combat ? 1 : 0.55,
-      }}
-    >
-      <div
-        className="absolute inset-0 rounded-full"
-        style={{ border: `1.5px solid ${color}`, boxShadow: `0 0 8px ${color}66` }}
-      />
-      {(armed || combat) &&
-        [0, 90, 180, 270].map((deg) => (
-          <div
-            key={deg}
-            className="absolute left-1/2 top-1/2"
-            style={{
-              width: 2,
-              height: 7,
-              background: color,
-              transform: `translate(-50%,-50%) rotate(${deg}deg) translateY(-21px)`,
-            }}
-          />
-        ))}
-      {combat && (
-        <div
-          className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full"
-          style={{ width: 3, height: 3, background: color }}
-        />
-      )}
-    </div>
-  );
-}
-
-function CoordsTicker() {
-  const [txt, setTxt] = useState('000.0 · 000.0 · 000.0');
+/**
+ * Full-frame white-blue flash: entering and leaving the tunnel, the ship
+ * dropping out of hyperspace, the camera passing through the canopy glass.
+ * Driven straight from the camera's telemetry on animation frames.
+ */
+function Flash() {
+  const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    const iv = window.setInterval(() => {
-      const p = camTelemetry.pos;
-      setTxt(
-        `X ${p.x.toFixed(1).padStart(6, '0')} · Y ${p.y.toFixed(1).padStart(6, '0')} · Z ${p.z
-          .toFixed(1)
-          .padStart(6, '0')}`,
-      );
-    }, 150);
-    return () => window.clearInterval(iv);
+    let raf = 0;
+    const frame = () => {
+      raf = requestAnimationFrame(frame);
+      if (ref.current) ref.current.style.opacity = camTelemetry.flash.toFixed(3);
+    };
+    raf = requestAnimationFrame(frame);
+    return () => cancelAnimationFrame(raf);
   }, []);
   return (
     <div
-      className="hud-corner top-4 left-1/2 -translate-x-1/2 font-data hidden md:block"
-      style={{ color: COLORS.textMuted, fontSize: '0.6875rem' }}
-    >
-      {txt}
-    </div>
+      ref={ref}
+      className="absolute inset-0"
+      style={{
+        opacity: 0,
+        background: 'radial-gradient(ellipse at 50% 45%, #ffffff 0%, #cfe6ff 38%, #6fa8ff 100%)',
+        mixBlendMode: 'screen',
+      }}
+    />
   );
 }
 
@@ -660,13 +386,34 @@ function CoordsTicker() {
 
 export function Hud() {
   const phase = useApp((s) => s.phase);
+  const location = useApp((s) => s.location);
   const reducedMotion = useApp((s) => s.reducedMotion);
-  // during WARP the hyperspace tunnel owns the whole frame — no HUD chrome
-  const inFlight = phase === 'BRIDGE' || phase === 'MISSION';
+  const titleUp = useApp((s) => s.titleUp);
+  // during a JUMP the hyperspace tunnel owns the whole frame — no HUD chrome
+  const inFlight = phase === 'FLIGHT';
+
+  // M opens/closes the map, Escape closes it
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const el = e.target as HTMLElement | null;
+      const tag = el?.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || el?.isContentEditable) return;
+      if (e.altKey || e.ctrlKey || e.metaKey) return;
+      const s = useApp.getState();
+      if (e.code === 'KeyM') {
+        if (s.mapOpen) s.closeMap();
+        else s.openMap();
+      } else if (e.code === 'Escape' && s.mapOpen) {
+        s.closeMap();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
 
   return (
-    // z-40 keeps HUD chrome (and the mission-complete overlay) above the
-    // in-world <Html> panels, which are capped at zIndexRange [30, 10]
+    // z-40 keeps HUD chrome (and the map) above the in-world <Html> panels,
+    // which are capped at zIndexRange [30, 10]
     <div
       className="absolute inset-0 overflow-hidden pointer-events-none select-none"
       style={{ zIndex: 40 }}
@@ -674,52 +421,40 @@ export function Hud() {
       {/* canopy scanlines over everything */}
       <div className="absolute inset-0 canopy-scanlines" />
 
-      {phase === 'BOOT' && (
+      <Flash />
+
+      {phase === 'INTRO' && titleUp && (
         <div className="pointer-events-auto absolute inset-0">
-          <BootOverlay />
+          <IntroOverlay />
         </div>
       )}
-      {phase === 'POWERUP' && (
+      {phase === 'BOARDING' && (
         <div className="pointer-events-auto absolute inset-0">
-          <PowerUpOverlay />
+          <BoardingOverlay />
         </div>
       )}
 
       {inFlight && (
         <>
-          <ObjectiveLog />
-          <SubsystemStrip />
-          <CommandCenter />
-          <ControlCluster />
-          <ScrollNavigator />
-          <WaypointRail />
-          <Reticle />
-          <CoordsTicker />
-          <MissionCompleteOverlay />
+          <LocationReadout />
+          <StopRail />
+          <ContentCard />
+          {location === 'COMMS' && <CommsPanel />}
+          {location === 'ARENA' && <ArenaHud />}
+          <FlightPrompt />
+          <BottomBar />
+          <FinaleOverlay />
+          <MapOverlay />
         </>
       )}
 
-      {/* the always-available escape hatch (plan §12) — hidden mid-warp;
-          bottom-left, since the command center now owns bottom-center */}
-      {phase !== 'BOOT' && phase !== 'WARP' && (
-        <div className="absolute bottom-3 left-4 md:left-6">
-          <Link
-            href="/resume"
-            className="hud-interactive font-data"
-            style={{ color: COLORS.textMuted, fontSize: '0.6875rem' }}
-          >
-            [ VIEW RÉSUMÉ — TEXT VERSION ]
-          </Link>
-        </div>
-      )}
-
-      {/* reduced-motion warp: quick dissolve instead of the tunnel */}
+      {/* reduced-motion jump: quick dissolve instead of the tunnel */}
       {reducedMotion && (
         <div
           className="absolute inset-0"
           style={{
             background: COLORS.void,
-            opacity: phase === 'WARP' ? 1 : 0,
+            opacity: phase === 'JUMP' ? 1 : 0,
             transition: 'opacity 180ms ease',
           }}
         />

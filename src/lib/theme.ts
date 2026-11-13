@@ -1,8 +1,5 @@
 // Design tokens — single source of truth for both CSS (globals.css mirrors
-// these) and Three.js materials. Values from the design bible §2.
-
-import { EXPERIENCE } from '@/content/experience';
-import { PROJECTS } from '@/content/projects';
+// these) and Three.js materials — plus the registry of places the ship can go.
 
 export const COLORS = {
   void: '#05060A',
@@ -20,107 +17,148 @@ export const COLORS = {
   danger: '#FF445A',
 } as const;
 
-export type MissionId = 'A' | 'B' | 'C' | 'D' | 'E' | 'CONTACT';
-export type SectorId = MissionId | 'BRIDGE';
+export type LocationId =
+  | 'HUB'
+  | 'ABOUT'
+  | 'SKILLS'
+  | 'EXPERIENCE'
+  | 'PROJECTS'
+  | 'ACHIEVEMENTS'
+  | 'ARENA'
+  | 'COMMS';
 
-export interface SectorTheme {
-  id: SectorId;
+export interface LocationTheme {
+  id: LocationId;
+  /** what the place is for — shown in the HUD and on the map */
+  label: string;
+  /** the invented world name */
   name: string;
-  callsign: string;
+  /** URL hash for deep links; the hub is the bare address */
+  hash: string;
   briefing: string;
   base: string;
   bright: string;
   deep: string;
-  /** FogExp2 density — open sectors low, dense fields higher (bible §4) */
+  /** FogExp2 density — open space low, dense fields higher */
   fogDensity: number;
-  /** secondary accent (only Gallery uses one) */
-  alt?: string;
 }
 
-export const SECTORS: Record<SectorId, SectorTheme> = {
-  BRIDGE: {
-    id: 'BRIDGE',
-    name: 'BRIDGE',
-    callsign: 'CONTROL PANEL',
-    briefing: 'PLOT A HYPERSPACE VECTOR FROM THE NAV DIAL. AUTOPILOT STANDING BY, PILOT.',
+export const LOCATIONS: Record<LocationId, LocationTheme> = {
+  HUB: {
+    id: 'HUB',
+    label: 'HUB',
+    name: 'WAYPOINT ZERO',
+    hash: '',
+    briefing: 'SCROLL DOWN TO CHARGE THE HYPERDRIVE AND FLY THE ROUTE. PRESS M FOR THE MAP.',
     base: '#00D9F5',
     bright: '#5DF2FF',
     deep: '#0E6E7E',
-    fogDensity: 0.02,
+    fogDensity: 0.006,
   },
-  A: {
-    id: 'A',
-    name: 'MISSION A — PILOT DOSSIER',
-    callsign: 'HOME STATION',
-    briefing: 'SCROLL TO TOUR HOME STATION — CAPTAIN DOSSIER + SHIP SUBSYSTEMS. THE FORCE IS STRONG WITH THIS ONE.',
+  ABOUT: {
+    id: 'ABOUT',
+    label: 'ABOUT',
+    name: 'FIRSTLIGHT',
+    hash: 'about',
+    briefing: 'HOME WORLD. PILOT RECORD ON FILE — SCROLL TO FLY ON.',
     base: '#FFB347',
     bright: '#FFD98A',
     deep: '#C2631E',
-    fogDensity: 0.025,
+    fogDensity: 0.007,
   },
-  B: {
-    id: 'B',
-    name: 'MISSION B — FLIGHT LOG',
-    callsign: 'CORUSCANT APPROACH',
-    briefing: `${EXPERIENCE.length} OUTPOSTS LOGGED ON FINAL APPROACH TO CORUSCANT. SCROLL TO FLY THE LANE — THE CITY-PLANET GROWS OFF THE PORT BOW.`,
-    // golden city-glow palette to match Coruscant's endless skyline
-    base: '#FFD75E',
-    bright: '#FFEDAF',
-    deep: '#8A6420',
-    fogDensity: 0.025,
-  },
-  C: {
-    id: 'C',
-    name: 'MISSION C — PROJECTS',
-    callsign: 'DEBRIS FIELD',
-    briefing: `${PROJECTS.length} ARTIFACTS ADRIFT IN THE DEBRIS FIELD. SCROLL TO SCAN EACH SIGNATURE — NEVER TELL ME THE ODDS.`,
-    base: '#B266FF',
-    bright: '#D7A6FF',
-    deep: '#6D28D9',
-    fogDensity: 0.045,
-  },
-  D: {
-    id: 'D',
-    name: 'MISSION D — GALLERY',
-    callsign: 'OBSERVATION DECK',
-    briefing: 'VISUAL ARCHIVE RING DEAD AHEAD. SCROLL TO ORBIT — THAT’S NO MOON… IT’S THE OBSERVATION DECK.',
+  SKILLS: {
+    id: 'SKILLS',
+    label: 'SKILLS',
+    name: 'ANVIL YARDS',
+    hash: 'skills',
+    briefing: 'FIVE DOCKS, FIVE DISCIPLINES. SCROLL TO TOUR THE YARD.',
     base: '#2FE0C8',
     bright: '#7BF3E4',
     deep: '#0C3B39',
-    fogDensity: 0.03,
-    alt: '#FF7FBF',
+    fogDensity: 0.008,
   },
-  E: {
-    id: 'E',
-    name: 'MISSION E — MUSTAFAR ARENA',
-    callsign: 'MUSTAFAR RANGE',
-    briefing: 'ASTEROIDS INBOUND OVER MUSTAFAR’S LAVA FIELDS. LOCK S-FOILS, HOLD THE HIGH GROUND — GREAT SHOT, RED FIVE.',
+  EXPERIENCE: {
+    id: 'EXPERIENCE',
+    label: 'EXPERIENCE',
+    name: 'MERIDIAN',
+    hash: 'experience',
+    briefing: 'FOUR POSTINGS LOGGED ALONG THE APPROACH LANE, OLDEST FIRST.',
+    base: '#FFD75E',
+    bright: '#FFEDAF',
+    deep: '#8A6420',
+    fogDensity: 0.007,
+  },
+  PROJECTS: {
+    id: 'PROJECTS',
+    label: 'PROJECTS',
+    name: 'THE DRIFT',
+    hash: 'projects',
+    briefing: 'FIVE BUILDS ADRIFT IN THE BELT. THE ODDS OF FINDING MORE ON GITHUB ARE GOOD.',
+    base: '#B266FF',
+    bright: '#D7A6FF',
+    deep: '#6D28D9',
+    fogDensity: 0.011,
+  },
+  ACHIEVEMENTS: {
+    id: 'ACHIEVEMENTS',
+    label: 'ACHIEVEMENTS',
+    name: 'CAIRN',
+    hash: 'achievements',
+    briefing: 'BEACONS FOR THE WINS WORTH MARKING. LAST STOP ON THE ROUTE.',
+    base: '#8FCBFF',
+    bright: '#D2ECFF',
+    deep: '#28507A',
+    fogDensity: 0.007,
+  },
+  ARENA: {
+    id: 'ARENA',
+    label: 'GAME',
+    name: 'EMBERFALL RANGE',
+    hash: 'arena',
+    briefing: 'ROCKS INBOUND OVER THE LAVA FIELDS. SHOOT THEM BEFORE THEY REACH THE HULL.',
     base: '#FF5A2E',
     bright: '#FFA24B',
     deep: '#B01E1E',
-    fogDensity: 0.05,
+    fogDensity: 0.009,
   },
-  CONTACT: {
-    id: 'CONTACT',
-    name: 'COMMS — OPEN CHANNEL',
-    callsign: 'COMMS TERMINAL',
-    briefing: 'CHANNEL OPEN. TUNE A FREQUENCY OR TRANSMIT — HELP ME, RECRUITER; YOU’RE MY ONLY HOPE.',
+  COMMS: {
+    id: 'COMMS',
+    label: 'CONTACT',
+    name: 'ECHO RELAY',
+    hash: 'comms',
+    briefing: 'CHANNEL OPEN. PICK A FREQUENCY OR SEND A MESSAGE.',
     base: '#4DFF88',
     bright: '#B6FFC9',
     deep: '#0B7A3E',
-    fogDensity: 0.03,
+    fogDensity: 0.008,
   },
 };
 
-export const MISSION_ORDER: MissionId[] = ['A', 'B', 'C', 'D', 'E', 'CONTACT'];
+/** the scroll route, in flight order — scrolling never leaves this list */
+export const ROUTE: LocationId[] = [
+  'HUB',
+  'ABOUT',
+  'SKILLS',
+  'EXPERIENCE',
+  'PROJECTS',
+  'ACHIEVEMENTS',
+];
 
-// Motion tokens (bible §6), ms
+/** reachable from the map only */
+export const OFF_ROUTE: LocationId[] = ['ARENA', 'COMMS'];
+
+export const ALL_LOCATIONS: LocationId[] = [...ROUTE, ...OFF_ROUTE];
+
+/** everything except the hub counts toward "visited" */
+export const DESTINATIONS: LocationId[] = ALL_LOCATIONS.filter((l) => l !== 'HUB');
+
+// Motion tokens, ms
 export const DUR = {
   micro: 120,
   ui: 320,
-  dock: 900,
-  warp: 1500,
-  // boarding flight: exterior orbit → over the nose → through the canopy
-  boot: 4600,
+  /** every hyperspace jump after the first */
+  jumpShort: 1500,
+  /** "route complete" beat before the map opens */
+  finale: 2600,
   decodePerChar: 35,
 } as const;

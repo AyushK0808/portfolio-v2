@@ -2,45 +2,33 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useApp } from '@/state/store';
-import { COLORS, SECTORS, SectorId } from '@/lib/theme';
-import { DIAL_NODES, FLIGHT } from '@/systems/flightplan';
+import { COLORS, LOCATIONS, LocationId } from '@/lib/theme';
+import { FLIGHT } from '@/systems/flightplan';
 
 /**
  * Cockpit instrument cluster — radar dish + animated charts. Lives in its
- * own module so the Bridge can project it inside the 3D nav dial (via
- * <Html>) while the HUD keeps the news marquee.
+ * own module so the hub can project it over the dashboard (via <Html>).
  */
 
-/** radar dots for the mounted sector, normalized to the dish */
-function useRadarPoints(sector: SectorId) {
+/** radar dots for the mounted location's stops, normalized to the dish */
+function useRadarPoints(location: LocationId) {
   return useMemo(() => {
-    let pts: { id: string; x: number; z: number; color: string }[] = [];
-    if (sector === 'BRIDGE') {
-      pts = DIAL_NODES.map((n) => ({
-        id: n.id,
-        x: n.pos[0],
-        z: n.pos[2],
-        color: SECTORS[n.id].base,
-      }));
-    } else {
-      const plan = FLIGHT[sector];
-      pts = Object.entries(plan.pois).map(([id, pose]) => ({
-        id,
-        x: pose.look[0],
-        z: pose.look[2],
-        color: SECTORS[sector].base,
-      }));
-    }
+    const color = LOCATIONS[location].base;
+    const pts = FLIGHT[location].stops.map((st) => ({
+      id: st.id,
+      x: st.anchor[0],
+      z: st.anchor[2],
+      color,
+    }));
     const maxR = Math.max(12, ...pts.map((p) => Math.hypot(p.x, p.z))) * 1.15;
     return pts.map((p) => ({ ...p, nx: p.x / maxR, nz: p.z / maxR }));
-  }, [sector]);
+  }, [location]);
 }
 
 export function Radar() {
-  const sector = useApp((s) => s.sector);
-  const focus = useApp((s) => s.focus);
-  const scanned = useApp((s) => s.scanned);
-  const points = useRadarPoints(sector);
+  const location = useApp((s) => s.location);
+  const stop = useApp((s) => s.stop);
+  const points = useRadarPoints(location);
   const R = 62;
 
   return (
@@ -64,10 +52,9 @@ export function Radar() {
             repeatCount="indefinite"
           />
         </g>
-        {/* waypoints (world +x → right, world -z → up) */}
-        {points.map((p) => {
-          const dim = sector === 'C' && scanned.includes(p.id);
-          const active = focus === p.id;
+        {/* stops (world +x → right, world -z → up) */}
+        {points.map((p, i) => {
+          const active = stop === i;
           return (
             <circle
               key={p.id}
@@ -75,7 +62,7 @@ export function Radar() {
               cy={p.nz * R}
               r={active ? 4 : 2.4}
               fill={p.color}
-              opacity={dim ? 0.35 : 0.95}
+              opacity={0.95}
             >
               {active && (
                 <animate attributeName="r" values="3;5;3" dur="1.2s" repeatCount="indefinite" />
@@ -164,7 +151,7 @@ export function BarGraph({ label, color }: { label: string; color: string }) {
   );
 }
 
-/** the full instrument cluster projected inside the nav dial */
+/** the full instrument cluster projected over the hub dashboard */
 export function InstrumentCluster() {
   return (
     <div className="flex items-end gap-3">

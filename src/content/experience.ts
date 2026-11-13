@@ -127,3 +127,6 @@ export const EXPERIENCE: ExperienceNode[] = [
     tech: ['.NET', 'React', 'Rust', 'Python', 'AWS', 'LLM agents'],
   },
 ];
+
+/** the Experience stop on the route shows paid roles only, oldest first */
+export const WORK: ExperienceNode[] = EXPERIENCE.filter((e) => e.kind === 'work');

@@ -8,11 +8,9 @@ export const metadata: Metadata = {
 };
 
 /**
- * Full text version (plan §12): same content as the 3D missions in plain
- * scrollable HTML — for recruiters in a hurry, phones, screen readers,
- * crawlers, and devices without WebGL. Layout mirrors the classic
- * ayushk08.com portfolio: app bar + About / Skills / Projects /
- * Experience / Key Roles / Education / Contact.
+ * The flat version of the site: the same route as the 3D flight, drawn as one
+ * scrolling page with GSAP scroll animations and no 3D scene. For recruiters in
+ * a hurry, screen readers, crawlers, and browsers without WebGL.
  */
 export default function ResumePage() {
 	return <ResumeView />;

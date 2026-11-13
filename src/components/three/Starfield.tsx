@@ -4,18 +4,18 @@ import { useRef } from 'react';
 import * as THREE from 'three';
 import { useFrame } from '@react-three/fiber';
 import { Stars } from '@react-three/drei';
-import { useApp, useSectorTheme } from '@/state/store';
+import { useApp, useLocationTheme } from '@/state/store';
 import { NebulaMaterial } from './materials';
 
 /**
  * Persistent background: instanced stars + an fBm nebula dome that
- * crossfades toward the mounted sector's palette.
+ * crossfades toward the mounted location's palette.
  */
 export function Starfield() {
-  const theme = useSectorTheme();
+  const theme = useLocationTheme();
   const quality = useApp((s) => s.quality);
   const phase = useApp((s) => s.phase);
-  const sector = useApp((s) => s.sector);
+  const location = useApp((s) => s.location);
   const nebulaRef = useRef<InstanceType<typeof NebulaMaterial>>(null);
   const nebulaMesh = useRef<THREE.Mesh>(null);
   const starsRef = useRef<THREE.Group>(null);
@@ -36,19 +36,19 @@ export function Starfield() {
       (m.uColorB as THREE.Color).lerp(targetB.current, k);
       // the title screen leans on the nebula as its hero — bloom it up there,
       // then settle back once the pilot is flying
-      const target = phase === 'BOOT' ? baseIntensity * 1.55 : baseIntensity;
+      const target = phase === 'INTRO' ? baseIntensity * 1.55 : baseIntensity;
       m.uIntensity += (target - m.uIntensity) * Math.min(dt * 0.9, 1);
-      // full spectral show on the title/menu screens; missions keep a hint
-      // of it so their sector palette still dominates
-      const onBridge = phase === 'BOOT' || phase === 'POWERUP' || sector === 'BRIDGE';
-      const multiTarget = onBridge ? 1 : 0.2;
+      // full spectral show on the title screen and at the hub; other locations keep a hint
+      // of it so their own palette still dominates
+      const atHub = phase === 'INTRO' || phase === 'BOARDING' || location === 'HUB';
+      const multiTarget = atHub ? 1 : 0.2;
       m.uMulti += (multiTarget - m.uMulti) * Math.min(dt * 0.9, 1);
     }
     // slow parallax drift opposite to look
     if (starsRef.current) {
       starsRef.current.rotation.y = -state.camera.rotation.y * 0.02 + state.clock.elapsedTime * 0.002;
     }
-    // lazy dome rotation so the gas keeps evolving as you sit on the bridge
+    // lazy dome rotation so the gas keeps evolving as you sit at the hub
     if (nebulaMesh.current) {
       nebulaMesh.current.rotation.y = state.clock.elapsedTime * 0.006;
       nebulaMesh.current.rotation.x = Math.sin(state.clock.elapsedTime * 0.02) * 0.06;
@@ -61,7 +61,7 @@ export function Starfield() {
         <Stars
           radius={300}
           depth={60}
-          count={quality === 'CINEMATIC' ? 6000 : 3000}
+          count={quality === 'CINEMATIC' ? 6000 : quality === 'PERFORMANCE' ? 3500 : 2000}
           factor={4}
           saturation={0}
           fade

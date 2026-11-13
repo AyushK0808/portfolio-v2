@@ -1,44 +1,17 @@
 'use client';
 
-import { Component, ReactNode, useCallback, useEffect, useState } from 'react';
+import { Component, ReactNode, useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { Canvas, RootState } from '@react-three/fiber';
 import { useApp } from '@/state/store';
 import { audio } from '@/systems/audio';
+import { attachScrollInput } from '@/systems/scroll';
+import { currentAddressLocation, locationFromHash, replaceLocation } from '@/systems/router';
 import { COLORS } from '@/lib/theme';
 import { Scene } from './three/Scene';
 import { Hud } from './hud/Hud';
 import { ShipViewer } from './ShipViewer';
 import { LoadingScreen } from './LoadingScreen';
-
-function MobileGate() {
-  return (
-    <div className="fixed inset-0 flex flex-col items-center justify-center gap-5 p-8 text-center">
-      <div className="canopy-scanlines pointer-events-none absolute inset-0" />
-      <div className="font-hud" style={{ color: COLORS.hudCyan, fontSize: '0.75rem' }}>
-        ▚ GROUND CONTROL TO PILOT
-      </div>
-      <div className="font-hero" style={{ fontSize: '1.6rem', color: COLORS.textPrimary }}>
-        DESKTOP FLIGHT DECK REQUIRED
-      </div>
-      <div
-        className="font-data max-w-sm"
-        style={{ color: COLORS.textSecondary, fontSize: '0.875rem', lineHeight: 1.7 }}
-      >
-        This interactive spaceship experience is built for larger screens — open it
-        on a desktop for the full mission. Meanwhile, the complete dossier is
-        available as a text transmission.
-      </div>
-      <Link
-        href="/resume"
-        className="hud-btn animate-breathe"
-        style={{ fontSize: '0.875rem', padding: '12px 28px', borderWidth: 2 }}
-      >
-        [ VIEW RÉSUMÉ — TEXT VERSION ]
-      </Link>
-    </div>
-  );
-}
 
 function NoWebGL() {
   return (
@@ -51,7 +24,7 @@ function NoWebGL() {
         dossier is available as a text transmission instead.
       </div>
       <Link href="/resume" className="hud-btn" style={{ fontSize: '0.875rem', padding: '10px 24px' }}>
-        [ OPEN TEXT RÉSUMÉ ]
+        [ VIEW 2D IMAGE ]
       </Link>
     </div>
   );
@@ -95,13 +68,55 @@ class CanvasErrorBoundary extends Component<
 /** drives the ship-ambience audio layer from the flight state machine */
 function AudioDirector() {
   const phase = useApp((s) => s.phase);
-  const sector = useApp((s) => s.sector);
+  const location = useApp((s) => s.location);
   const shipView = useApp((s) => s.shipView);
   useEffect(() => {
-    // spaceship.mp3 plays on the 3D ship view + every mission except comms
-    const wantShip = shipView || (phase === 'MISSION' && sector !== 'CONTACT');
+    // spaceship.mp3 plays on the 3D ship view and while flying a location —
+    // not at the hub (open-space ambience) or on the comms channel
+    const wantShip =
+      shipView || (phase === 'FLIGHT' && location !== 'HUB' && location !== 'COMMS');
     audio.shipAmbience(wantShip);
-  }, [phase, sector, shipView]);
+  }, [phase, location, shipView]);
+  return null;
+}
+
+/**
+ * Deep links + browser history. The address bar names the current location;
+ * Back/Forward jump between visited locations. A Back/Forward that lands
+ * mid-jump is remembered and reconciled once the ship arrives.
+ */
+function HistoryDirector() {
+  const pending = useRef(false);
+
+  useEffect(() => {
+    const follow = () => {
+      const s = useApp.getState();
+      const target = currentAddressLocation();
+      if (s.phase === 'FLIGHT') {
+        if (target !== s.location) s.jumpTo(target, { pushHistory: false });
+      } else if (s.phase === 'JUMP') {
+        pending.current = true;
+      } else if (target !== 'HUB') {
+        // still on the title screen: go straight there
+        s.enterAt(target);
+      }
+    };
+    window.addEventListener('popstate', follow);
+    const unsub = useApp.subscribe(
+      (s) => s.phase,
+      (phase) => {
+        if (phase === 'FLIGHT' && pending.current) {
+          pending.current = false;
+          follow();
+        }
+      },
+    );
+    return () => {
+      window.removeEventListener('popstate', follow);
+      unsub();
+    };
+  }, []);
+
   return null;
 }
 
@@ -119,6 +134,9 @@ function Deck() {
   const quality = useApp((s) => s.quality);
   const [gen, setGen] = useState(0);
   const [recovering, setRecovering] = useState(false);
+
+  // wheel / touch / keys → the scroll engine, for as long as the deck is up
+  useEffect(() => attachScrollInput(), []);
 
   const recover = useCallback(() => {
     setRecovering(true);
@@ -161,11 +179,11 @@ function Deck() {
   );
 
   return (
-    <div className="deck-cursor fixed inset-0">
+    <div className="deck-cursor flight-deck fixed inset-0">
       {/* safety net for a context-loss throw that surfaces during React render */}
       <CanvasErrorBoundary key={gen} onError={recover} fallback={null}>
         <Canvas
-          dpr={quality === 'CINEMATIC' ? [1, 2] : [1, 1.5]}
+          dpr={quality === 'CINEMATIC' ? [1, 2] : quality === 'PERFORMANCE' ? [1, 1.5] : 1}
           gl={{ antialias: false, powerPreference: 'high-performance' }}
           style={{ background: COLORS.void }}
           onCreated={onCreated}
@@ -176,40 +194,39 @@ function Deck() {
       </CanvasErrorBoundary>
       <Hud />
       {recovering && <RebootNotice />}
-      {/* first-paint boot loader — holds until the hero ship is on screen */}
+      {/* first-paint boot loader — holds until something real is on screen */}
       <LoadingScreen />
     </div>
   );
 }
 
 /**
- * Client root: WebGL detection, quality auto-tier, reduced-motion sync,
- * then the Canvas + canopy HUD.
+ * Client root: WebGL detection, quality auto-tier, reduced-motion sync, deep
+ * links, then the Canvas + canopy HUD. The same experience runs on every
+ * screen size — there is no separate phone path.
  */
 export default function App() {
   const [webgl, setWebgl] = useState<boolean | null>(null);
-  const [mobile, setMobile] = useState(false);
   const shipView = useApp((s) => s.shipView);
 
   useEffect(() => {
-    // phones/tablets skip the flight entirely — the deck is desktop-only
-    const isMobile =
-      /Android|iPhone|iPad|Mobile/i.test(navigator.userAgent) || window.innerWidth < 768;
-    setMobile(isMobile);
-    if (isMobile) {
-      setWebgl(true); // gate renders regardless; skip the probe
-      return;
-    }
-
+    let ok = false;
     try {
       const c = document.createElement('canvas');
-      const gl = c.getContext('webgl2') ?? c.getContext('webgl');
-      setWebgl(!!gl);
+      ok = !!(c.getContext('webgl2') ?? c.getContext('webgl'));
     } catch {
-      setWebgl(false);
+      ok = false;
     }
+    setWebgl(ok);
+    if (!ok) return;
 
-    // auto quality tier (plan §11): low-memory → PERFORMANCE
+    // a link straight to a location (e.g. /#projects) skips the intro and
+    // drops out of hyperspace there; anything unrecognised falls back to the hub
+    const linked = locationFromHash(window.location.hash);
+    if (linked && linked !== 'HUB') useApp.getState().enterAt(linked);
+    else if (window.location.hash) replaceLocation('HUB');
+
+    // auto quality tier: low-memory devices start on the lighter tier
     const nav = navigator as Navigator & { deviceMemory?: number };
     if (nav.deviceMemory !== undefined && nav.deviceMemory <= 4) {
       useApp.getState().setQuality('PERFORMANCE');
@@ -224,8 +241,6 @@ export default function App() {
     (window as unknown as { __app?: typeof useApp }).__app = useApp;
     return () => mq.removeEventListener('change', applyRm);
   }, []);
-
-  if (mobile) return <MobileGate />;
 
   if (webgl === null) {
     return (
@@ -243,6 +258,7 @@ export default function App() {
   return (
     <>
       <AudioDirector />
+      <HistoryDirector />
       {shipView ? <ShipViewer /> : <Deck />}
     </>
   );
