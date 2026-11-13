@@ -229,24 +229,29 @@ export const WarpMaterial = shaderMaterial(
 
     // ── hyperspace swirl: soft luminous clouds twisting past the canopy ──
     if (mid > 0.002) {
-      // corkscrew the angular coordinate along the tunnel and race it forward
-      vec2 p = vec2(vUv.x * 4.0 + vUv.y * 1.6, vUv.y * 3.0 - uTime * 2.4);
-      float n = fbm2(p);
-      float n2 = fbm2(p * 1.9 + vec2(n * 2.2, -uTime * 1.1));
-      float bands = fbm2(vec2(vUv.x * 8.0, vUv.y * 1.1 - uTime * 3.6));
+      // long filaments of light, stretched down the tunnel, corkscrewing
+      // slowly and racing toward the pilot. Three scales: broad rivers of
+      // glow, ropes inside them, and fine bright threads.
+      float along = vUv.y * 3.2;
+      float twist = vUv.x + along * 0.22 + uTime * 0.02;
+      float rivers = fbm2(vec2(twist * 7.0, along * 1.4 - uTime * 2.2));
+      float ropes = fbm2(vec2(twist * 22.0 + rivers * 1.5, along * 2.6 - uTime * 4.4));
+      float threads = fbm2(vec2(twist * 64.0, along * 5.0 - uTime * 7.5));
 
-      vec3 tcol = mix(base * 0.4, base, n);
-      // mother-of-pearl highlights threaded through the flow
-      tcol = mix(tcol, vec3(1.0), pow(clamp(n2, 0.0, 1.0), 3.2) * 0.7);
-      tcol += base * pow(clamp(bands, 0.0, 1.0), 2.5) * 0.55;
+      float glowAmt = smoothstep(0.30, 0.78, rivers);
+      float ropeAmt = pow(smoothstep(0.42, 0.86, ropes), 1.6);
+      float threadAmt = pow(smoothstep(0.58, 0.92, threads), 2.0);
 
-      // white-hot core at the far end of the tunnel (uv.y→0 is dead ahead)
-      float core = pow(1.0 - vUv.y, 4.0);
-      tcol += vec3(0.9, 0.96, 1.0) * core * 1.1;
+      // deep blue between the filaments → the tunnel's blue → white-hot cores
+      vec3 deep = base * vec3(0.10, 0.20, 0.42);
+      vec3 tcol = mix(deep, base, glowAmt * 0.75 + ropeAmt * 0.5);
+      tcol = mix(tcol, vec3(1.0), clamp(ropeAmt * 0.55 + threadAmt * 0.8, 0.0, 1.0));
 
-      // dark lanes between the flow streaks keep the swirl readable
-      float lane = 0.55 + 0.45 * bands;
-      float ta = (0.14 + n * 0.42 + core * 0.9) * lane * mid;
+      // everything converges on the bright point dead ahead (uv.y → 0)
+      float core = pow(1.0 - vUv.y, 9.0);
+      tcol += vec3(0.85, 0.93, 1.0) * core * 0.9;
+
+      float ta = (0.16 + glowAmt * 0.34 + ropeAmt * 0.5 + threadAmt * 0.45 + core * 0.7) * mid;
       col += tcol * ta;
       a += ta;
     }

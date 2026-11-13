@@ -7,6 +7,7 @@ import { useApp } from '@/state/store';
 import { COLORS } from '@/lib/theme';
 import { audio } from '@/systems/audio';
 import { HeroShip } from './three/HeroShip';
+import { SHIP_POS } from '@/systems/flightplan';
 import { Starfield } from './three/Starfield';
 
 /**
@@ -26,12 +27,18 @@ export function ShipViewer() {
         style={{ background: COLORS.void }}
       >
         <color attach="background" args={[COLORS.void]} />
-        <PerspectiveCamera makeDefault fov={42} near={0.1} far={2000} position={[7.5, 3.5, 8]} />
+        <PerspectiveCamera
+          makeDefault
+          fov={42}
+          near={0.1}
+          far={2000}
+          position={[SHIP_POS[0] + 9, SHIP_POS[1] + 4, SHIP_POS[2] + 12]}
+        />
         <OrbitControls
-          target={[0, 0.5, -1.4]}
+          target={SHIP_POS}
           enablePan={false}
-          minDistance={5}
-          maxDistance={22}
+          minDistance={7}
+          maxDistance={30}
           autoRotate
           autoRotateSpeed={0.5}
           enableDamping
@@ -40,7 +47,7 @@ export function ShipViewer() {
         <ambientLight intensity={0.22} color={COLORS.spaceDeep} />
         <Starfield />
         <Suspense fallback={null}>
-          <HeroShip />
+          <HeroShip display />
         </Suspense>
       </Canvas>
 
