@@ -7,9 +7,8 @@ import { easing } from 'maath';
 import { useApp } from '@/state/store';
 
 /**
- * Wrapper that wires a world object into the reticle/selection system:
- * hover → store.hovered (+ blip), click → store.focus (dock), and the
- * bible §10 hover pop (scale 1.0 → 1.12).
+ * Wrapper that wires a world object into the pointer system: hover →
+ * store.hovered (+ blip) with a small scale pop, click → `onSelect`.
  */
 export function Interactable({
   id,
@@ -27,7 +26,6 @@ export function Interactable({
   const group = useRef<THREE.Group>(null);
   const hovered = useApp((s) => s.hovered === id);
   const setHovered = useApp((s) => s.setHovered);
-  const setFocus = useApp((s) => s.setFocus);
   const gl = useThree((s) => s.gl);
 
   // swap the deck's idle reticle for the "armed" lock cursor while hovering
@@ -39,6 +37,14 @@ export function Interactable({
       el.style.cursor = '';
     };
   }, [hovered, gl]);
+
+  // never leave a stale hover behind when the object unmounts mid-hover
+  useEffect(
+    () => () => {
+      if (useApp.getState().hovered === id) useApp.getState().setHovered(null);
+    },
+    [id],
+  );
 
   useFrame((_, dt) => {
     if (!group.current) return;
@@ -54,8 +60,7 @@ export function Interactable({
   };
   const click = (e: ThreeEvent<MouseEvent>) => {
     e.stopPropagation();
-    if (onSelect) onSelect(id);
-    else setFocus(id);
+    onSelect?.(id);
   };
 
   return (
