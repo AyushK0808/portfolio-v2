@@ -1,85 +1,73 @@
-// Skills → Ship Subsystems map (Mission A). Proficiency 0–100 drives the
-// emissive bar fill on each subsystem tile.
+// Skills stop (Anvil Yards) — five groups, one dock each. No self-rated
+// percentages: each group shows its technologies and one line of proof.
 
-export interface Subsystem {
+export interface SkillGroup {
   id: string;
+  /** ship-system flavour name shown on the in-world marker */
   system: string;
+  /** the plain-language name of the discipline */
   domain: string;
-  level: number;
   items: string[];
-  detail: string;
+  /** where this was actually used */
+  proof: string;
 }
 
-export const SUBSYSTEMS: Subsystem[] = [
+export const SKILLS: SkillGroup[] = [
   {
-    id: 'propulsion',
-    system: 'PROPULSION',
-    domain: 'Frontend & Web',
-    level: 92,
-    items: ['TypeScript', 'React', 'Next.js', 'Tailwind', 'Three.js'],
-    detail:
-      'Primary drive. Production dashboards at CSOD, 15+ full-stack builds at VinnovateIT serving 30k+ users.',
-  },
-  {
-    id: 'ai-core',
+    id: 'ai',
     system: 'AI CORE',
-    domain: 'Agents & LLM Orchestration',
-    level: 90,
-    items: ['LangChain', 'LangGraph', 'RAG', 'Multi-agent systems', 'Ollama/Groq'],
-    detail:
-      'CSOD Harness (−56% token burn), an 8-node LangGraph document-ETL fabric, and a published agentic financial advisor.',
+    domain: 'AI & Agents',
+    items: [
+      'LangChain',
+      'LangGraph',
+      'RAG',
+      'Multi-agent systems',
+      'Scikit-learn',
+      'TensorFlow',
+      'YOLO / SAM',
+    ],
+    proof:
+      'CSOD Harness (−56% token burn), an 8-node LangGraph document-ETL pipeline, customer segmentation at Samsung R&D, and the drone perception stack that took first at ISDC 2024.',
   },
   {
-    id: 'nav',
-    system: 'NAV COMPUTER',
-    domain: 'ML & Data Science',
-    level: 88,
-    items: ['Python', 'Scikit-learn', 'TensorFlow', 'Pandas/NumPy', 'Statsmodels'],
-    detail:
-      'Customer segmentation + CLV at Samsung R&D; physiological time-series classification at Titan Smart Labs.',
+    id: 'frontend',
+    system: 'PROPULSION',
+    domain: 'Frontend',
+    items: ['TypeScript', 'React', 'Next.js', 'Tailwind', 'Three.js'],
+    proof:
+      'Production dashboards at CSOD, and 15+ full-stack builds at VinnovateIT serving 30k+ users.',
   },
   {
-    id: 'comms',
+    id: 'backend',
     system: 'COMMS ARRAY',
     domain: 'Backend & APIs',
-    level: 88,
     items: ['FastAPI', 'Node.js', '.NET', 'Flask', 'REST'],
-    detail:
-      'Microservice APIs at Deloitte (90%+ test coverage), job-lifecycle REST APIs on the CSX Scheduler.',
+    proof:
+      'Microservice APIs at Deloitte (90%+ test coverage), and job-lifecycle REST APIs on the CSX Scheduler.',
   },
   {
-    id: 'structural',
+    id: 'systems',
     system: 'STRUCTURAL',
-    domain: 'Systems Languages',
-    level: 82,
+    domain: 'Systems',
     items: ['Go', 'Rust', 'C/C++', 'Java'],
-    detail:
-      'Rust parallel PDF renderer in 22+ production regions; Go worker pools pushing 100 sends/sec in MailForge.',
+    proof:
+      'A Rust parallel PDF renderer live in 22+ production regions; Go worker pools pushing 100 sends/sec in MailForge.',
   },
   {
-    id: 'power',
+    id: 'infra',
     system: 'POWER PLANT',
-    domain: 'Data & Infra',
-    level: 85,
-    items: ['PostgreSQL', 'Redis', 'Docker', 'AWS', 'Cloudflare'],
-    detail:
-      'Queues, caches and containers under everything above. Deployed campus-scale apps on Cloudflare + AWS.',
-  },
-  {
-    id: 'sensors',
-    system: 'SENSOR SUITE',
-    domain: 'Vision & Edge',
-    level: 80,
-    items: ['YOLO', 'SegFormer', 'SAM', 'ROS', 'Jetson/RPi'],
-    detail:
-      'Autonomous drone perception stack — vision + SLAM on edge hardware — that took first at ISDC 2024.',
-  },
-  {
-    id: 'life',
-    system: 'LIFE SUPPORT',
-    domain: 'Tooling & Process',
-    level: 84,
-    items: ['Git', 'Linux', 'Jenkins', 'GitHub Actions', 'PyTest'],
-    detail: 'CI, tests, and the boring reliability work that keeps the rest breathing.',
+    domain: 'Infra & Tooling',
+    items: [
+      'PostgreSQL',
+      'Redis',
+      'Docker',
+      'AWS',
+      'Cloudflare',
+      'Linux',
+      'GitHub Actions',
+      'PyTest',
+    ],
+    proof:
+      'Queues, caches, containers and CI under everything above. Campus-scale apps deployed on Cloudflare + AWS.',
   },
 ];
